@@ -273,6 +273,16 @@
 
       <!-- ═══ 设置 ═══ -->
       <section class="page" id="page-settings" hidden>
+        <div class="save-bar" id="saveBar">
+          <div class="save-info">
+            <b>保存设置</b>
+            <span class="save-hint" id="saveHint">尚未改动 · 保存范围：任务 / 执行 / 进度条 / 安全闸 / 排除规则</span>
+          </div>
+          <div class="save-actions">
+            <button class="btn btn-ghost" id="btnResetCfg" disabled>撤销</button>
+            <button class="btn btn-primary" id="btnSaveCfg" disabled>保存设置</button>
+          </div>
+        </div>
         <div class="card">
           <div class="card-head">
             <h3>同步任务</h3>
@@ -293,7 +303,7 @@
                 <button type="button" data-v="mirror">本地 → 目的地（镜像）</button>
                 <button type="button" data-v="twoway">双向同步</button>
               </div>
-              <span class="f-help">镜像：目的地完全跟本地一致，本地删了目的地也删。双向：两边新文件互相补齐、以最近修改的版本为准；删除也同步到另一边，被删/被覆盖的文件先进版本历史（保留 5 份快照，「硬盘」页可恢复）</span>
+              <span class="f-help">镜像：目的地与本地完全一致（含删除）。双向：两边互补，删除也同步；删掉的文件进版本历史，留 5 份可恢复。</span>
             </div>
             <div class="row3">
               <label class="field">
@@ -315,10 +325,11 @@
           </div>
         </div>
 
+        <div class="card-pair">
         <div class="card">
           <div class="card-head"><h3>桌面进度条</h3></div>
-          <div class="form">
-            <label class="switch-row">
+          <div class="form bar-form">
+            <label class="switch-row bar-switch">
               <input type="checkbox" id="setShowWindow">
               <span class="switch"></span>
               <span class="switch-txt">
@@ -326,7 +337,7 @@
                 <em>关掉就纯后台运行，什么都不显示</em>
               </span>
             </label>
-            <div class="field">
+            <div class="field bar-mode">
               <span class="f-label">什么时候出现</span>
               <div class="seg" id="setBarMode">
                 <button type="button" data-v="auto">有事才出现</button>
@@ -334,7 +345,7 @@
                 <button type="button" data-v="never">只在托盘</button>
               </div>
             </div>
-            <div class="inline-row">
+            <div class="inline-row bar-actions">
               <button class="btn btn-ghost" id="btnShowBar" type="button">叫出进度条</button>
               <button class="btn btn-ghost" id="btnShowConsole" type="button">打开桌面控制台</button>
             </div>
@@ -343,7 +354,7 @@
 
         <div class="card">
           <div class="card-head"><h3>安全闸</h3></div>
-          <div class="form">
+          <div class="form guard-form">
             <label class="switch-row">
               <input type="checkbox" id="setGuard">
               <span class="switch"></span>
@@ -352,11 +363,13 @@
                 <em>源端一次删掉太多文件就停下，避免误删硬盘</em>
               </span>
             </label>
-            <label class="field field-narrow">
+            <label class="field guard-pct">
               <span class="f-label">单次删除上限（%）</span>
               <input type="number" id="setGuardPct" min="1" max="100">
             </label>
+            <p class="guard-note">一次要删的文件超过这个比例就先暂停，确认后才继续。</p>
           </div>
+        </div>
         </div>
 
         <div class="card">
@@ -372,14 +385,6 @@
               <textarea id="setExcludeFiles" rows="4" spellcheck="false"></textarea>
               <span class="f-help">每行一个，如 <code>~$*</code>、<code>*.tmp</code></span>
             </label>
-          </div>
-        </div>
-
-        <div class="save-bar">
-          <span class="save-hint" id="saveHint"></span>
-          <div class="save-actions">
-            <button class="btn btn-ghost" id="btnResetCfg">撤销</button>
-            <button class="btn btn-primary" id="btnSaveCfg">保存</button>
           </div>
         </div>
 

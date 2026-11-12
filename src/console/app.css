@@ -242,6 +242,14 @@ b { font-weight: 500; }
 .btn:active { transform: translateY(.5px); }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
+/* 未改动时「保存设置」呈灰色，避免误以为还没保存 */
+.btn-primary[disabled] {
+  background: var(--surface-3);
+  border-color: var(--line);
+  color: var(--t3);
+  box-shadow: none;
+  opacity: 1;
+}
 .btn .bicon { width: 16px; height: 16px; flex: none; margin-left: -2px; }
 
 .btn-primary {
@@ -804,8 +812,10 @@ textarea { resize: vertical; line-height: 1.65; }
   background: var(--surface);
   box-shadow: var(--sh-1);
 }
-.save-hint { font-size: 13.5px; color: var(--t3); }
-.save-actions { display: flex; gap: 10px; }
+.save-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.save-info b { font-size: 14px; font-weight: 600; color: var(--t1); }
+.save-hint { font-size: 12.5px; color: var(--t3); line-height: 1.5; }
+.save-actions { display: flex; gap: 10px; flex: none; }
 
 .kv { display: flex; flex-direction: column; gap: 10px; }
 .kv-row {
@@ -1078,7 +1088,15 @@ textarea { resize: vertical; line-height: 1.65; }
   background: transparent; color: var(--t1);
 }
 .task-name:hover, .task-name:focus { border-color: var(--line); background: var(--surface); outline: none; }
-.task-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 14px; }
+.task-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 14px 18px;
+  align-items: start;
+}
+.task-col { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+/* 左下角说明与右侧「选择硬盘」按钮行等高，两列底部齐平 */
+.task-src .f-help { min-height: 38px; display: flex; align-items: center; }
 .task-src input, .dest-folder-input {
   width: 100%; box-sizing: border-box;
   padding: 8px 10px; font-size: 13.5px;
@@ -1086,16 +1104,17 @@ textarea { resize: vertical; line-height: 1.65; }
   background: var(--surface); color: var(--t1);
 }
 .task-src input:focus, .dest-folder-input:focus { outline: none; border-color: var(--accent); }
-.task-dest .dest-add { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+.task-dest .dest-add { display: flex; gap: 8px; align-items: center; }
 .task-dest .dest-disk-pick {
   flex: 1; max-width: 320px;
-  padding: 7px 9px; font-size: 13px;
+  min-height: 38px; box-sizing: border-box;
+  padding: 8px 11px; font-size: 13px;
   border: 1px dashed var(--line-2); border-radius: 8px;
   background: var(--surface); color: var(--t2);
 }
-.dest-folder-row { display: flex; gap: 8px; margin-top: 8px; }
+.dest-folder-row { display: flex; gap: 8px; }
 .dest-folder-row input { flex: 1; }
-.dest-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.dest-list { display: flex; flex-direction: column; gap: 6px; }
 .dest-row {
   display: flex; gap: 10px; align-items: center;
   padding: 8px 10px;
@@ -1115,10 +1134,31 @@ textarea { resize: vertical; line-height: 1.65; }
   padding: 4px 8px; border-radius: 6px;
 }
 .dest-del:hover { color: var(--err); background: var(--err-soft); }
-.empty-sm { font-size: 13px; color: var(--t3); padding: 6px 0; }
+.empty-sm {
+  display: flex; align-items: center;
+  min-height: 38px; box-sizing: border-box;
+  padding: 0 11px;
+  font-size: 13px; color: var(--t3);
+  border: 1px dashed var(--line-2); border-radius: 8px;
+  background: var(--surface-2);
+}
 
 /* 执行卡：三列一行铺开 */
 .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+
+/* 桌面进度条 + 安全闸：同一块区域左右并排 */
+.card-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+.bar-form { display: flex; flex-direction: column; gap: 14px; }
+.bar-form .bar-mode { gap: 6px; }
+.bar-form .bar-actions { flex-wrap: wrap; }
+.guard-form { display: flex; flex-direction: column; gap: 14px; }
+.guard-form .guard-pct { gap: 6px; }
+.guard-note { margin: 0; font-size: 12.5px; color: var(--t3); line-height: 1.6; }
 
 /* 概览：任务摘要行 */
 .task-row { padding: 11px 2px; border-bottom: 1px solid var(--line); }
@@ -1144,5 +1184,6 @@ textarea { resize: vertical; line-height: 1.65; }
 @media (max-width: 900px) {
   .task-grid { grid-template-columns: 1fr; }
   .row3 { grid-template-columns: 1fr; }
+  .card-pair { grid-template-columns: 1fr; }
   .tr-src { max-width: 100%; }
 }

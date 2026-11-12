@@ -635,11 +635,12 @@ function renderTasksEditor(tasks) {
         <button type="button" class="btn btn-ghost btn-sm task-del">删除任务</button>
       </div>
       <div class="task-grid">
-        <div class="task-src">
+        <div class="task-col task-src">
           <span class="f-label">源目录（要备份的文件夹）</span>
           <input type="text" class="task-src-input" value="${escapeHtml(t.source || '')}" spellcheck="false" placeholder="例如 E:\\资料">
+          <span class="f-help">整个文件夹连子目录一起备份；排除规则在下方设置</span>
         </div>
-        <div class="task-dest">
+        <div class="task-col task-dest">
           <span class="f-label">备份目的地（可多个：硬盘插入即备，文件夹定时即备）</span>
           <div class="dest-list">${dests}</div>
           <div class="dest-add">
@@ -668,9 +669,16 @@ function renderTasksEditor(tasks) {
   });
 }
 
+const SAVE_IDLE_HINT = '尚未改动 · 保存范围：任务 / 执行 / 进度条 / 安全闸 / 排除规则';
+function setSaveState(dirty, hint) {
+  state.settingsDirty = dirty;
+  const btnSave = $('btnSaveCfg'), btnReset = $('btnResetCfg'), h = $('saveHint');
+  if (btnSave) btnSave.disabled = !dirty;
+  if (btnReset) btnReset.disabled = !dirty;
+  if (h) h.textContent = hint || (dirty ? '有未保存的改动，点右侧「保存设置」生效' : SAVE_IDLE_HINT);
+}
 function markDirty() {
-  state.settingsDirty = true;
-  $('saveHint').textContent = '有改动，记得点保存';
+  setSaveState(true);
 }
 
 function addDestRow(box, d) {
@@ -804,9 +812,8 @@ function fillSettings(force) {
     : '未运行';
   $('setAutostart').checked = !!srv.autostart;
 
-  state.settingsDirty = false;
   state.settingsFilled = true;
-  $('saveHint').textContent = '改动保存后立刻生效';
+  setSaveState(false);
 }
 
 async function saveSettings() {
@@ -829,19 +836,18 @@ async function saveSettings() {
   try {
     const r = await apiPost('/api/config', body);
     if (r.ok) {
-      state.settingsDirty = false;
-      $('saveHint').textContent = '已保存 · ' + clockText(new Date().toISOString());
       toast('设置已保存，下一次同步生效', 'ok');
       await tick();
       fillSettings(true);
+      $('saveHint').textContent = '已保存 · ' + clockText(new Date().toISOString()) + ' · 保存范围：任务 / 执行 / 进度条 / 安全闸 / 排除规则';
     } else {
       toast(r.message || '保存失败', 'err', 5000);
     }
   } catch (e) {
     toast('保存失败：' + e.message, 'err');
   } finally {
-    btn.disabled = false;
-    btn.textContent = '保存';
+    btn.textContent = '保存设置';
+    btn.disabled = !state.settingsDirty;
   }
 }
 
@@ -969,8 +975,7 @@ function bindEvents() {
     const b = e.target.closest('button[data-v]');
     if (!b) return;
     setBarModeUI(b.dataset.v);
-    state.settingsDirty = true;
-    $('saveHint').textContent = '有改动，记得点保存';
+    markDirty();
   });
 
   // 同步方向（镜像 / 双向）—— 跟着保存按钮一起提交
@@ -978,8 +983,7 @@ function bindEvents() {
     const b = e.target.closest('button[data-v]');
     if (!b) return;
     setSyncModeUI(b.dataset.v);
-    state.settingsDirty = true;
-    $('saveHint').textContent = '有改动，记得点保存';
+    markDirty();
   });
 
   // 开机自启：开关即生效，不走保存按钮
@@ -1001,7 +1005,7 @@ function bindEvents() {
   });
   $('setShowWindow').addEventListener('change', () => {
     setBarModeUI($('setBarMode').dataset.value || 'auto');
-    state.settingsDirty = true;
+    markDirty();
   });
   $('btnShowBar').addEventListener('click', () => cmdAndToast('showbar', '进度条已叫出来，看右下角'));
   $('btnShowConsole').addEventListener('click', () => cmdAndToast('showconsole', '桌面控制台已打开'));
@@ -1036,13 +1040,10 @@ function bindEvents() {
   });
 
   // 设置页：动过就记脏
-  ['setThreads','setDebounce','setShowWindow','setGuard','setGuardPct','setExcludeDirs','setExcludeFiles','setFolderSync']
+  ['setThreads','setDebounce','setGuard','setGuardPct','setExcludeDirs','setExcludeFiles','setFolderSync']
     .forEach(id => {
       const el = $(id);
-      el.addEventListener('input', () => {
-        state.settingsDirty = true;
-        $('saveHint').textContent = '有未保存的修改';
-      });
+      if (el) el.addEventListener('input', markDirty);
     });
 
   // 任务编辑器
@@ -1060,11 +1061,12 @@ function bindEvents() {
         <button type="button" class="btn btn-ghost btn-sm task-del">删除任务</button>
       </div>
       <div class="task-grid">
-        <div class="task-src">
+        <div class="task-col task-src">
           <span class="f-label">源目录（要备份的文件夹）</span>
           <input type="text" class="task-src-input" value="" spellcheck="false" placeholder="例如 E:\\资料">
+          <span class="f-help">整个文件夹连子目录一起备份；排除规则在下方设置</span>
         </div>
-        <div class="task-dest">
+        <div class="task-col task-dest">
           <span class="f-label">备份目的地（可多个：硬盘插入即备，文件夹定时即备）</span>
           <div class="dest-list"><div class="empty-sm">还没有目的地，在下面添加</div></div>
           <div class="dest-add">
