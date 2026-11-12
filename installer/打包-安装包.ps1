@@ -9,8 +9,9 @@
     产出：dist\FileSync-Setup-64bit-v<版本>.exe
       · 可选安装目录（默认 %LOCALAPPDATA%\Programs\FileSync，用户级、不需要管理员）
       · 升级：直接运行新版本安装包，装到同一个目录即覆盖更新，用户配置不受影响
-      · 卸载：控制面板 / 设置里正常卸载，安装/卸载都会先停掉正在运行的服务
-      · 用户数据（config.json / hardware.json / logs / _ipc）不进安装包、卸载时保留
+      · 升级：向导会显示当前安装目录（置灰不可改），并提示要换目录需先卸载重装
+      · 卸载：控制面板 / 设置里正常卸载，弹窗可选是否保留用户数据（默认保留）
+      · 用户数据（config.json / hardware.json / logs / _ipc）不进安装包；卸载时可勾选保留或清除
 #>
 $ErrorActionPreference = 'Stop'
 $root    = $PSScriptRoot                                  # installer\：iss / tools / version / dist 都在这里
@@ -87,5 +88,5 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ''
 Write-Host ('  安装包已生成：dist\FileSync-Setup-64bit-v' + $Version + '.exe') -ForegroundColor Green
 Write-Host '  · 可选安装目录（默认 %LOCALAPPDATA%\Programs\FileSync，用户级免管理员）' -ForegroundColor Gray
-Write-Host '  · 升级 = 直接运行新版安装包覆盖安装，用户配置保留' -ForegroundColor Gray
-Write-Host '  · 卸载 = 系统控制面板正常卸载，安装/卸载前自动停服务' -ForegroundColor Gray
+Write-Host '  · 升级 = 显示并锁定原安装目录，附「换目录需先卸载」提示' -ForegroundColor Gray
+Write-Host '  · 卸载 = 系统控制面板正常卸载，可选保留用户数据（默认保留）' -ForegroundColor Gray
