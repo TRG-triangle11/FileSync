@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FileSync — 插上硬盘，自动备份</title>
+<meta name="description" content="FileSync 是 Windows 上的文件同步备份工具：插上指定硬盘就自动备份，支持多任务、多目的地、双向同步与 5 份版本历史。">
+<style>
+  :root{
+    --bg:#080A0F;
+    --surface:#0D1118;
+    --surface-2:#111722;
+    --surface-3:#161D2A;
+    --line:rgba(255,255,255,.07);
+    --line-2:rgba(255,255,255,.13);
+    --t1:#E9EEF6;
+    --t2:#98A5B8;
+    --t3:#5F6B7E;
+    --accent:#5C8EF6;
+    --accent-hi:#7FA9FF;
+    --ok:#3FD6B0;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --max:1160px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--t1);
+    font-family:var(--sans);font-size:16px;line-height:1.7;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    overflow-x:hidden;
+  }
+  ::selection{background:rgba(92,142,246,.28)}
+  a{color:inherit;text-decoration:none}
+  button{font-family:inherit}
+  img,svg{display:block}
+  .wrap{width:100%;max-width:var(--max);margin:0 auto;padding:0 28px}
+
+  /* ── 背景：细网格 + 一处极淡的氛围光 ── */
+  .bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+  .bg::before{
+    content:"";position:absolute;inset:0;
+    background-image:linear-gradient(to right,rgba(255,255,255,.032) 1px,transparent 1px),
+                     linear-gradient(to bottom,rgba(255,255,255,.032) 1px,transparent 1px);
+    background-size:72px 72px;
+    mask-image:radial-gradient(120% 80% at 50% 0%,#000 0%,transparent 78%);
+    -webkit-mask-image:radial-gradient(120% 80% at 50% 0%,#000 0%,transparent 78%);
+  }
+  .bg::after{
+    content:"";position:absolute;left:50%;top:-380px;width:1100px;height:760px;
+    transform:translateX(-50%);
+    background:radial-gradient(circle,rgba(92,142,246,.16) 0%,rgba(92,142,246,.05) 38%,transparent 68%);
+    filter:blur(20px);
+  }
+  main,header,footer{position:relative;z-index:1}
+
+  /* ── 顶部导航 ── */
+  .nav{position:sticky;top:0;z-index:50;transition:background .25s,border-color .25s,backdrop-filter .25s;border-bottom:1px solid transparent}
+  .nav.stuck{background:rgba(8,10,15,.78);backdrop-filter:blur(14px);border-bottom-color:var(--line)}
+  .nav-in{display:flex;align-items:center;gap:32px;height:68px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em}
+  .brand svg{width:26px;height:26px;color:var(--accent)}
+  .brand .ver{
+    font-family:var(--mono);font-size:11px;color:var(--t3);
+    border:1px solid var(--line);border-radius:5px;padding:2px 6px;line-height:1.2;letter-spacing:0
+  }
+  .nav-links{display:flex;gap:26px;margin-left:auto;font-size:14px;color:var(--t2)}
+  .nav-links a{transition:color .18s}
+  .nav-links a:hover{color:var(--t1)}
+  .nav-cta{display:flex;align-items:center;gap:14px}
+  .nav-gh{color:var(--t2);display:flex;align-items:center;gap:7px;font-size:14px;transition:color .18s}
+  .nav-gh:hover{color:var(--t1)}
+  .nav-gh svg{width:18px;height:18px}
+
+  /* ── 按钮 ── */
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:9px;
+    height:46px;padding:0 22px;border-radius:10px;border:1px solid transparent;
+    font-size:15px;font-weight:500;cursor:pointer;white-space:nowrap;
+    transition:background .18s,border-color .18s,transform .06s,color .18s;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn svg{width:17px;height:17px}
+  .btn-primary{background:var(--accent);color:#fff;box-shadow:0 8px 22px -10px rgba(92,142,246,.75)}
+  .btn-primary:hover{background:var(--accent-hi)}
+  .btn-ghost{background:transparent;border-color:var(--line-2);color:var(--t1)}
+  .btn-ghost:hover{background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.22)}
+  .btn-sm{height:36px;padding:0 15px;font-size:13.5px;border-radius:8px}
+
+  /* ── Hero ── */
+  .hero{padding:88px 0 96px}
+  .hero-grid{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);gap:64px;align-items:center}
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:9px;
+    font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;color:var(--t2);
+    border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:rgba(255,255,255,.02)
+  }
+  .eyebrow .dot{width:5px;height:5px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(63,214,176,.14)}
+  h1{
+    margin:26px 0 0;font-size:clamp(42px,5.4vw,72px);line-height:1.08;
+    letter-spacing:-.035em;font-weight:700;
+  }
+  h1 .dim{display:block;margin-top:12px;font-size:.56em;line-height:1.2;color:var(--t3);letter-spacing:-.02em;font-weight:700}
+  .lede{margin:24px 0 0;font-size:16.5px;line-height:1.72;color:var(--t2);max-width:46ch}
+  .lede span{display:block}
+  .lede b{color:var(--t1);font-weight:600}
+  .lede .l1{color:var(--t2)}
+  .lede .l1 b{color:var(--accent-hi)}
+  .lede .l2{
+    margin-top:12px;font-size:22px;line-height:1.45;letter-spacing:-.015em;
+    color:var(--t1);font-weight:700;
+  }
+  .lede .l3{margin-top:10px;font-size:15px;line-height:1.72;color:var(--t3)}
+  .lede .l3 + .l3{margin-top:1px}
+  .lede .l3 b{color:var(--t2)}
+  .hero-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:34px}
+  .hero-meta{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:22px;font-size:13px;color:var(--t3)}
+  .hero-meta span{display:inline-flex;align-items:center;gap:7px}
+  .hero-meta svg{width:14px;height:14px;color:var(--t3)}
+
+  /* ── 产品窗口 mockup ── */
+  .win{
+    border:1px solid var(--line-2);border-radius:14px;overflow:hidden;
+    background:linear-gradient(180deg,#10151F 0%,#0B0F16 100%);
+    box-shadow:0 40px 80px -34px rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.05) inset;
+  }
+  .win-bar{
+    display:flex;align-items:center;gap:10px;height:42px;padding:0 14px;
+    border-bottom:1px solid var(--line);background:rgba(255,255,255,.015)
+  }
+  .dots{display:flex;gap:6px}
+  .dots i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.16)}
+  .win-url{
+    flex:1;display:flex;justify-content:center;
+    font-family:var(--mono);font-size:11px;color:var(--t3);
+  }
+  .win-url span{border:1px solid var(--line);border-radius:6px;padding:3px 12px;background:rgba(0,0,0,.3)}
+  .win-body{display:grid;grid-template-columns:104px minmax(0,1fr);min-height:352px}
+  .side{border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:3px}
+  .side a{
+    display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;
+    font-size:11.5px;color:var(--t3)
+  }
+  .side a svg{width:13px;height:13px}
+  .side a.on{background:rgba(92,142,246,.13);color:var(--accent-hi)}
+  .pane{padding:18px}
+  .pane-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .pane-head b{font-size:13px;font-weight:600;letter-spacing:.01em}
+  .pill{
+    font-size:10.5px;font-family:var(--mono);color:var(--ok);
+    background:rgba(63,214,176,.1);border:1px solid rgba(63,214,176,.22);
+    border-radius:999px;padding:3px 9px
+  }
+  .task-card{border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.018);padding:13px}
+  .task-top{display:flex;align-items:baseline;gap:8px}
+  .task-top b{font-size:12.5px;font-weight:600}
+  .task-top em{font-style:normal;font-size:10.5px;color:var(--t3);font-family:var(--mono)}
+  .flow{display:flex;align-items:center;gap:8px;margin-top:11px;font-family:var(--mono);font-size:10.5px;color:var(--t2)}
+  .path{background:rgba(255,255,255,.05);border-radius:6px;padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .flow svg{width:12px;height:12px;flex:none;color:var(--accent)}
+  .dest{display:flex;align-items:center;gap:6px;background:rgba(92,142,246,.1);border:1px solid rgba(92,142,246,.2);border-radius:6px;padding:4px 8px;color:#BBD0FF}
+  .dest i{width:5px;height:5px;border-radius:50%;background:var(--ok)}
+  .ring-row{display:flex;align-items:center;gap:16px;margin-top:14px}
+  .ring{
+    width:70px;height:70px;border-radius:50%;flex:none;position:relative;
+    background:conic-gradient(var(--accent) 0 68%,rgba(255,255,255,.075) 68% 100%);
+    -webkit-mask:radial-gradient(circle,transparent 66%,#000 67%);
+    mask:radial-gradient(circle,transparent 66%,#000 67%);
+  }
+  .ring-num{font-family:var(--mono);font-size:18px;font-weight:500;letter-spacing:-.02em}
+  .ring-num small{font-size:10px;color:var(--t3);margin-left:2px}
+  .ring-lbl{font-size:11px;color:var(--t3);margin-top:3px;font-family:var(--mono)}
+  .bars{display:flex;flex-direction:column;gap:7px;margin-top:16px}
+  .bar{display:flex;align-items:center;gap:10px;font-size:10.5px;color:var(--t3);font-family:var(--mono)}
+  .bar .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t2)}
+  .bar .track{width:62px;height:3px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden;flex:none}
+  .bar .track i{display:block;height:100%;background:var(--accent);border-radius:2px}
+  .bar .track i.done{background:var(--ok)}
+  .bar .pc{width:26px;text-align:right;flex:none;font-variant-numeric:tabular-nums}
+
+  .minibar{
+    margin-top:14px;display:flex;align-items:center;gap:10px;
+    border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.025);
+    padding:8px 11px
+  }
+  .minibar svg{width:14px;height:14px;color:var(--accent);flex:none}
+  .minibar .mb-t{font-size:10.5px;color:var(--t2)}
+  .minibar .mb-track{flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.09);overflow:hidden}
+  .minibar .mb-track i{display:block;height:100%;width:68%;background:linear-gradient(90deg,#4E7EE8,#7FA9FF)}
+
+  /* ── 指标条 ── */
+  .stats{border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .stats-in{display:grid;grid-template-columns:repeat(3,1fr)}
+  .stat{padding:30px 26px;border-right:1px solid var(--line)}
+  .stat:last-child{border-right:none}
+  .stat .n{font-family:var(--mono);font-size:31px;letter-spacing:-.03em;line-height:1.15}
+  .stat .n small{font-size:12px;color:var(--t3);margin-left:3px}
+  .stat .d{font-size:13px;color:var(--t3);margin-top:5px}
+
+  /* ── 通用段落头 ── */
+  section.blk{padding:96px 0}
+  .sec-head{max-width:640px;margin-bottom:48px}
+  .sec-tag{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;color:var(--accent);text-transform:uppercase}
+  .sec-head h2{margin:14px 0 0;font-size:clamp(28px,3.2vw,40px);line-height:1.2;letter-spacing:-.025em;font-weight:700}
+  .sec-head p{margin:14px 0 0;color:var(--t2);font-size:15.5px;line-height:1.8}
+
+  /* ── 功能网格 ── */
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .feat{background:var(--bg);padding:30px 26px 34px;transition:background .2s}
+  .feat:hover{background:var(--surface)}
+  .feat .ico{
+    width:36px;height:36px;border-radius:9px;display:grid;place-items:center;
+    border:1px solid var(--line-2);background:rgba(92,142,246,.09);color:var(--accent-hi)
+  }
+  .feat .ico svg{width:18px;height:18px}
+  .feat h3{margin:20px 0 0;font-size:15.5px;font-weight:600;letter-spacing:.01em}
+  .feat p{margin:9px 0 0;font-size:13.5px;line-height:1.75;color:var(--t2)}
+  .feat code{
+    font-family:var(--mono);font-size:12px;color:var(--t1);
+    background:rgba(255,255,255,.055);border-radius:4px;padding:1px 5px
+  }
+
+  /* ── 三步 ── */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+  .step{position:relative;padding-top:22px;border-top:1px solid var(--line-2)}
+  .step .idx{font-family:var(--mono);font-size:11.5px;color:var(--t3);letter-spacing:.08em}
+  .step h3{margin:12px 0 0;font-size:17px;font-weight:600;letter-spacing:-.01em}
+  .step p{margin:9px 0 0;font-size:13.5px;line-height:1.75;color:var(--t2)}
+
+  /* ── 下载 ── */
+  .dl{
+    border:1px solid var(--line-2);border-radius:16px;overflow:hidden;
+    background:
+      radial-gradient(90% 130% at 12% 0%,rgba(92,142,246,.15) 0%,transparent 58%),
+      linear-gradient(180deg,#10151F,#0B0F16);
+  }
+  .dl-in{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:40px;align-items:center;padding:46px 44px}
+  .dl h2{margin:0;font-size:clamp(24px,2.6vw,32px);letter-spacing:-.02em;font-weight:700}
+  .dl p{margin:12px 0 0;color:var(--t2);font-size:14px;line-height:1.8}
+  .dl .meta{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:18px;font-family:var(--mono);font-size:11.5px;color:var(--t3)}
+  .dl .meta span{display:inline-flex;align-items:center;gap:6px}
+  .dl .meta svg{width:13px;height:13px}
+  .dl-actions{display:flex;flex-direction:column;gap:10px;min-width:212px}
+  .dl-note{
+    border-top:1px solid var(--line);padding:14px 44px 16px;
+    font-size:12px;color:var(--t3);display:flex;flex-wrap:wrap;gap:6px 18px
+  }
+
+  /* ── 页脚 ── */
+  footer{border-top:1px solid var(--line);padding:34px 0 46px;color:var(--t3);font-size:12.5px}
+  .foot{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+  .foot-l{display:flex;align-items:center;gap:12px}
+  .foot-l svg{width:18px;height:18px;color:var(--t3)}
+  .foot a:hover{color:var(--t1)}
+  .foot-r{display:flex;gap:20px;font-family:var(--mono);font-size:11.5px}
+
+  /* ── 进入动效 ── */
+  .rv{opacity:0;transform:translateY(14px);transition:opacity .7s cubic-bezier(.22,.61,.36,1),transform .7s cubic-bezier(.22,.61,.36,1)}
+  .rv.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){
+    .rv{opacity:1;transform:none;transition:none}
+    html{scroll-behavior:auto}
+  }
+  html{scroll-behavior:smooth}
+
+  /* ── 响应式 ── */
+  @media (max-width:1020px){
+    .hero{padding:64px 0 72px}
+    .hero-grid{grid-template-columns:1fr;gap:44px}
+    .lede{max-width:56ch}
+    .grid3{grid-template-columns:1fr 1fr}
+    .steps{grid-template-columns:1fr;gap:22px}
+    .dl-in{grid-template-columns:1fr;gap:28px;padding:36px 30px}
+    .dl-actions{flex-direction:row;min-width:0}
+    .dl-actions .btn{flex:1}
+    .dl-note{padding:14px 30px 16px}
+  }
+  @media (max-width:760px){
+    .wrap{padding:0 20px}
+    .nav-links{display:none}
+    .nav-in{height:62px;gap:16px}
+    .stats-in{grid-template-columns:1fr}
+    .stat{border-right:none;border-bottom:1px solid var(--line);padding:22px 20px}
+    .stat:last-child{border-bottom:none}
+    .grid3{grid-template-columns:1fr}
+    section.blk{padding:64px 0}
+    .sec-head{margin-bottom:32px}
+    .hero-meta{gap:6px 14px}
+    .dl-actions{flex-direction:column}
+    .win-body{grid-template-columns:1fr}
+    .side{display:none}
+    h1{letter-spacing:-.03em}
+  }
+</style>
+</head>
+<body>
+<div class="bg" aria-hidden="true"></div>
+
+<header class="nav" id="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top" aria-label="FileSync 首页">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 11a8 8 0 0 0-13.7-5.3L4 8"/><path d="M4 4v4h4"/>
+        <path d="M4 13a8 8 0 0 0 13.7 5.3L20 16"/><path d="M20 20v-4h-4"/>
+      </svg>
+      <span>FileSync</span>
+      <span class="ver">v1.2.3</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">功能</a>
+      <a href="#how">怎么用</a>
+      <a href="#download">下载</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="nav-gh" href="https://github.com/TRG-triangle11/FileSync" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.63 22.4c.57.1.78-.25.78-.55v-2.1c-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.26 5.69.42.36.79 1.07.79 2.16v3.2c0 .3.21.66.79.55A11.5 11.5 0 0 0 12 .5Z"/></svg>
+        <span>GitHub</span>
+      </a>
+      <a class="btn btn-primary btn-sm" href="#download">下载</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <!-- Hero -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="rv">
+        <span class="eyebrow"><span class="dot"></span>WINDOWS 10 / 11 · 本地运行</span>
+        <h1>插上硬盘，<br>自动备份。<span class="dim">什么都不用管</span></h1>
+        <p class="lede">
+          <span class="l1">FileSync 认的是<b>你的硬盘</b>，不是盘符。</span>
+          <span class="l2">插上就同步，拔掉就停。</span>
+          <span class="l3">支持多任务、多目的地、双向同步；</span>
+          <span class="l3">删掉的文件保留 <b>5 份快照</b>，随时恢复。</span>
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#download">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 21h16"/></svg>
+            下载 Windows 版
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/TRG-triangle11/FileSync" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.63 22.4c.57.1.78-.25.78-.55v-2.1c-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.26 5.69.42.36.79 1.07.79 2.16v3.2c0 .3.21.66.79.55A11.5 11.5 0 0 0 12 .5Z"/></svg>
+            查看源码
+          </a>
+        </div>
+        <div class="hero-meta">
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m4 12 5 5L20 6"/></svg>免费开源</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m4 12 5 5L20 6"/></svg>无需注册</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m4 12 5 5L20 6"/></svg>配置只存在本机</span>
+        </div>
+      </div>
+
+      <!-- 产品界面 mockup -->
+      <div class="rv" aria-hidden="true">
+        <div class="win">
+          <div class="win-bar">
+            <div class="dots"><i></i><i></i><i></i></div>
+            <div class="win-url"><span>127.0.0.1:7792 · FileSync 控制台</span></div>
+            <div class="dots" style="opacity:0"><i></i><i></i><i></i></div>
+          </div>
+          <div class="win-body">
+            <aside class="side">
+              <a class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>概览</a>
+              <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>硬盘</a>
+              <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5h16M4 12h16M4 19h10"/></svg>日志</a>
+              <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.5-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4Z"/></svg>设置</a>
+            </aside>
+            <div class="pane">
+              <div class="pane-head">
+                <b>正在同步 · 1 个任务</b>
+                <span class="pill">硬盘已连接</span>
+              </div>
+
+              <div class="task-card">
+                <div class="task-top">
+                  <b>工作资料备份</b>
+                  <em>双向同步</em>
+                </div>
+                <div class="flow">
+                  <span class="path">D:\工作资料</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 12h15"/><path d="m13 6 6 6-6 6"/></svg>
+                  <span class="dest"><i></i>移动硬盘 · 4TB</span>
+                </div>
+                <div class="ring-row">
+                  <div class="ring"></div>
+                  <div>
+                    <div class="ring-num">68<small>%</small></div>
+                    <div class="ring-lbl">1.24 TB / 1.82 TB</div>
+                  </div>
+                </div>
+                <div class="bars">
+                  <div class="bar"><span class="nm">项目\2026 设计稿</span><span class="track"><i style="width:92%"></i></span><span class="pc">92%</span></div>
+                  <div class="bar"><span class="nm">文档\合同归档</span><span class="track"><i style="width:74%"></i></span><span class="pc">74%</span></div>
+                  <div class="bar"><span class="nm">素材\产品图片</span><span class="track"><i class="done" style="width:100%"></i></span><span class="pc">完成</span></div>
+                </div>
+              </div>
+
+              <div class="minibar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 0 0-14.4-6.1L3.5 8.4"/><path d="M3.5 3.9v4.5h4.5"/><path d="M3.5 12a8.5 8.5 0 0 0 14.4 6.1l2.6-2.5"/><path d="M20.5 20.1v-4.5h-4.5"/></svg>
+                <span class="mb-t">同步中 · 82 MB/s</span>
+                <span class="mb-track"><i></i></span>
+                <span class="mb-t">68%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 指标 -->
+  <section class="stats">
+    <div class="wrap stats-in">
+      <div class="stat"><div class="n">5<small>份</small></div><div class="d">删除与覆盖的文件快照，随时恢复</div></div>
+      <div class="stat"><div class="n">6<small>道</small></div><div class="d">盘符、序列号、容量、指纹等安全校验</div></div>
+      <div class="stat"><div class="n">3<small>步</small></div><div class="d">选源目录、加目的地、插盘即用</div></div>
+    </div>
+  </section>
+
+  <!-- 功能 -->
+  <section class="blk" id="features">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <div class="sec-tag">Features</div>
+        <h2>为"懒得管"设计的备份</h2>
+        <p>设好一次，之后插上硬盘就自动跑。不用记脚本、不用手动点、不用盯着进度。</p>
+      </div>
+
+      <div class="grid3 rv">
+        <article class="feat">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.4"/><path d="M7 12h.01M17 12h.01"/></svg></div>
+          <h3>认盘，不认盘符</h3>
+          <p>按硬盘硬件序列号识别。换 USB 口、改盘符、换电脑，都还认得出是哪块盘。</p>
+        </article>
+        <article class="feat">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h7v13H4zM13 4h7v16h-7z"/></svg></div>
+          <h3>多任务，互不干扰</h3>
+          <p>任意多组 <code>A→B</code>、<code>C→D</code>，各自有独立的基线、进度和失败重试。</p>
+        </article>
+        <article class="feat">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h6l2-6 2 12 2-6h6"/></svg></div>
+          <h3>双向同步</h3>
+          <p>两边互相补齐，以最近修改的版本为准；删除也会同步，但先留一份快照。</p>
+        </article>
+        <article class="feat">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6"/><path d="M12 15v6"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <h3>版本历史</h3>
+          <p>被删、被覆盖的文件进 <code>_SyncHistory</code>，保留最近 5 份，网页里点一下就恢复。</p>
+        </article>
+        <article class="feat">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 18v3"/></svg></div>
+          <h3>网页控制台</h3>
+          <p>任务、进度、日志、历史恢复都在浏览器里，深浅色跟随系统，手机也能看。</p>
+        </article>
+        <article class="feat">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <h3>六道安全闸</h3>
+          <p>一次要删的文件超过阈值，会先停下来问你，确认后才继续——防手滑。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 怎么用 -->
+  <section class="blk" id="how" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <div class="sec-tag">How it works</div>
+        <h2>三步，然后忘了它</h2>
+        <p>第一次配置不超过两分钟，之后都由硬盘插入触发。</p>
+      </div>
+      <div class="steps rv">
+        <div class="step">
+          <div class="idx">01 / SOURCE</div>
+          <h3>选一个要备份的文件夹</h3>
+          <p>比如 <code style="font-family:var(--mono);font-size:12px">D:\工作资料</code>。整个目录连子目录一起同步，排除规则可以单独设置。</p>
+        </div>
+        <div class="step">
+          <div class="idx">02 / TARGET</div>
+          <h3>加一个目的地</h3>
+          <p>移动硬盘（按序列号认盘）或本地文件夹都行，一个源可以同时备份到多个地方。</p>
+        </div>
+        <div class="step">
+          <div class="idx">03 / AUTO</div>
+          <h3>插上就自动跑</h3>
+          <p>后台常驻，插盘即触发；退出后开机自启仍会恢复，托盘右键随时手动同步。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 下载 -->
+  <section class="blk" id="download" style="padding-top:0">
+    <div class="wrap">
+      <div class="dl rv">
+        <div class="dl-in">
+          <div>
+            <h2>下载 FileSync</h2>
+            <p>覆盖安装即可升级，原有的任务与配置完整保留。安装时会显示当前目录，卸载可选择是否保留个人数据。</p>
+            <div class="meta">
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>Windows 10 / 11 · 64 位</span>
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 21h16"/></svg>10.8 MB</span>
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>v1.2.3</span>
+            </div>
+          </div>
+          <div class="dl-actions">
+            <a class="btn btn-primary" href="https://github.com/TRG-triangle11/FileSync/releases/download/v1.2.3/FileSync-Setup-64bit-v1.2.3.exe">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 21h16"/></svg>
+              下载安装包
+            </a>
+            <a class="btn btn-ghost" href="https://github.com/TRG-triangle11/FileSync/releases" target="_blank" rel="noopener">所有版本</a>
+          </div>
+        </div>
+        <div class="dl-note">
+          <span>安装包不联网、不收集数据</span>
+          <span>同步只在你的磁盘之间进行</span>
+          <span>配置文件保存在本机</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div class="foot-l">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 11a8 8 0 0 0-13.7-5.3L4 8"/><path d="M4 4v4h4"/>
+        <path d="M4 13a8 8 0 0 0 13.7 5.3L20 16"/><path d="M20 20v-4h-4"/>
+      </svg>
+      <span>FileSync — 本地优先的文件同步工具</span>
+    </div>
+    <div class="foot-r">
+      <a href="https://github.com/TRG-triangle11/FileSync" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/TRG-triangle11/FileSync/releases" target="_blank" rel="noopener">Releases</a>
+      <span>v1.2.3</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // 导航滚动后加背景
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.classList.toggle('stuck', window.scrollY > 8);
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  // 进入视口淡入
+  const items = document.querySelectorAll('.rv');
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 });
+    items.forEach(el => io.observe(el));
+  } else {
+    items.forEach(el => el.classList.add('in'));
+  }
+</script>
+</body>
+</html>
