@@ -228,6 +228,48 @@
   .step h3{margin:12px 0 0;font-size:17px;font-weight:600;letter-spacing:-.01em}
   .step p{margin:9px 0 0;font-size:13.5px;line-height:1.75;color:var(--t2)}
 
+  /* ── 对比表 ── */
+  .cmp{
+    border:1px solid var(--line-2);border-radius:14px;overflow:hidden;
+    background:var(--surface);
+  }
+  .cmp-head,.cmp-row{display:grid;grid-template-columns:190px 1fr 1fr}
+  .cmp-head{background:rgba(255,255,255,.022);border-bottom:1px solid var(--line-2)}
+  .cmp-row + .cmp-row{border-top:1px solid var(--line)}
+  .cmp-head > div,.cmp-row > div{padding:15px 22px;font-size:13.5px;line-height:1.7}
+  .cmp-head > div{font-size:12.5px;font-weight:600;letter-spacing:.01em}
+  .cmp-head .c-dim{color:transparent}
+  .c-dim{color:var(--t3);font-size:13px}
+  .c-cloud{color:var(--t3);border-left:1px solid var(--line)}
+  .c-fs{
+    color:var(--t1);border-left:1px solid rgba(92,142,246,.3);
+    background:rgba(92,142,246,.06);
+  }
+  .cmp-head .c-cloud{color:var(--t2)}
+  .cmp-head .c-fs{color:var(--accent-hi);background:rgba(92,142,246,.13)}
+  .cmp-head .c-fs span{color:var(--t3);font-weight:400;font-size:11.5px;margin-left:6px}
+  .cmp-note{margin:18px 0 0;font-size:13px;line-height:1.8;color:var(--t3);max-width:70ch}
+
+  /* ── 常见问题 ── */
+  .faq{border-top:1px solid var(--line-2);max-width:920px}
+  .faq details{border-bottom:1px solid var(--line)}
+  .faq summary{
+    list-style:none;cursor:pointer;position:relative;
+    padding:21px 46px 21px 0;font-size:15.5px;font-weight:600;color:var(--t1);
+    transition:color .2s;
+  }
+  .faq summary::-webkit-details-marker{display:none}
+  .faq summary:hover{color:var(--accent-hi)}
+  .faq summary::after{
+    content:"";position:absolute;right:8px;top:50%;width:8px;height:8px;
+    border-right:1.6px solid var(--t3);border-bottom:1.6px solid var(--t3);
+    transform:translateY(-70%) rotate(45deg);transition:transform .26s ease,border-color .2s;
+  }
+  .faq details[open] summary::after{transform:translateY(-25%) rotate(-135deg);border-color:var(--accent)}
+  .faq .a{padding:0 46px 22px 0;font-size:14px;line-height:1.85;color:var(--t2)}
+  .faq .a p{margin:0}
+  .faq .a p + p{margin-top:9px}
+
   /* ── 下载 ── */
   .dl{
     border:1px solid var(--line-2);border-radius:16px;overflow:hidden;
@@ -271,6 +313,7 @@
     .lede{max-width:56ch}
     .grid3{grid-template-columns:1fr 1fr}
     .steps{grid-template-columns:1fr;gap:22px}
+    .cmp-head,.cmp-row{grid-template-columns:150px 1fr 1fr}
     .dl-in{grid-template-columns:1fr;gap:28px;padding:36px 30px}
     .dl-actions{flex-direction:row;min-width:0}
     .dl-actions .btn{flex:1}
@@ -286,6 +329,18 @@
     .grid3{grid-template-columns:1fr}
     section.blk{padding:64px 0}
     .sec-head{margin-bottom:32px}
+    /* 对比表在窄屏改为逐条堆叠，标题栏隐藏、用前缀标注 */
+    .cmp-head{display:none}
+    .cmp-row{grid-template-columns:1fr}
+    .cmp-row > div{padding:0 18px}
+    .cmp-row .c-dim{padding-top:16px;padding-bottom:5px;font-size:12px;letter-spacing:.04em}
+    .cmp-row .c-cloud{border-left:none;padding-top:2px;padding-bottom:2px}
+    .cmp-row .c-fs{
+      border-left:none;background:transparent;padding-top:3px;padding-bottom:16px;
+    }
+    .cmp-row .c-cloud::before{content:"网盘 · ";color:var(--t3)}
+    .cmp-row .c-fs::before{content:"FileSync · ";color:var(--accent-hi)}
+    .faq .a,.faq summary{padding-right:34px}
     .hero-meta{gap:6px 14px}
     .dl-actions{flex-direction:column}
     .win-body{grid-template-columns:1fr}
@@ -309,7 +364,9 @@
     </a>
     <nav class="nav-links">
       <a href="#features">功能</a>
+      <a href="#compare">对比</a>
       <a href="#how">怎么用</a>
+      <a href="#faq">问答</a>
       <a href="#download">下载</a>
     </nav>
     <div class="nav-cta">
@@ -463,6 +520,61 @@
     </div>
   </section>
 
+  <!-- 对比 -->
+  <section class="blk" id="compare" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <div class="sec-tag">Compare</div>
+        <h2>和网盘，差在哪</h2>
+        <p>网盘不是不好，是它解决的不是同一个问题：它擅长异地访问和分享，不擅长"把几百 GB 原样备份到自己的盘上"。</p>
+      </div>
+
+      <div class="cmp rv">
+        <div class="cmp-head">
+          <div class="c-dim">对比项</div>
+          <div class="c-cloud">网盘 / 云备份</div>
+          <div class="c-fs">FileSync<span>本机直连</span></div>
+        </div>
+        <div class="cmp-row">
+          <div class="c-dim">文件放在哪</div>
+          <div class="c-cloud">先上传到服务商的服务器</div>
+          <div class="c-fs">复制到你自己的移动硬盘</div>
+        </div>
+        <div class="cmp-row">
+          <div class="c-dim">同步速度</div>
+          <div class="c-cloud">受宽带上传带宽限制，几十 MB/s 已算快</div>
+          <div class="c-fs">USB 3.0 直连，机械盘 100 MB/s 起，固态更快</div>
+        </div>
+        <div class="cmp-row">
+          <div class="c-dim">花费</div>
+          <div class="c-cloud">按年订阅，容量越大越贵，一直续</div>
+          <div class="c-fs">买一块硬盘用三五年，软件本身免费</div>
+        </div>
+        <div class="cmp-row">
+          <div class="c-dim">断网 / 停服</div>
+          <div class="c-cloud">没网就不能同步，还可能限速、涨价、关停</div>
+          <div class="c-fs">全程离线，插上就跑，不依赖任何服务</div>
+        </div>
+        <div class="cmp-row">
+          <div class="c-dim">误删找回</div>
+          <div class="c-cloud">有回收站，能留多久看服务商策略</div>
+          <div class="c-fs">本地保留 5 份快照，网页里点一下恢复</div>
+        </div>
+        <div class="cmp-row">
+          <div class="c-dim">隐私</div>
+          <div class="c-cloud">文件必须经过第三方服务器</div>
+          <div class="c-fs">文件只在你的两台设备之间，不上传</div>
+        </div>
+        <div class="cmp-row">
+          <div class="c-dim">分享协作</div>
+          <div class="c-cloud">强项：生成链接、多人同时编辑</div>
+          <div class="c-fs">不做协作，只做备份</div>
+        </div>
+      </div>
+      <p class="cmp-note rv">两者不冲突：异地访问、分享给别人，用网盘；几个 TB 的原片、工程文件、家庭照片做长期备份，用 FileSync。</p>
+    </div>
+  </section>
+
   <!-- 怎么用 -->
   <section class="blk" id="how" style="padding-top:0">
     <div class="wrap">
@@ -487,6 +599,63 @@
           <h3>插上就自动跑</h3>
           <p>后台常驻，插盘即触发；退出后开机自启仍会恢复，托盘右键随时手动同步。</p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 常见问题 -->
+  <section class="blk" id="faq" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <div class="sec-tag">FAQ</div>
+        <h2>几个被问最多的</h2>
+        <p>点开看答案。没覆盖到的，去 GitHub 提 issue。</p>
+      </div>
+
+      <div class="faq rv">
+        <details open>
+          <summary>会不会把我硬盘上的文件删光？</summary>
+          <div class="a">
+            <p>镜像模式会同步删除：源目录里没有的，目的地上也删。但有三道保险——只作用在该任务的目的目录内部，越不到盘根；删除前先把文件挪进 <code>_SyncHistory</code> 快照；单次删除比例超过阈值（默认 20%）就停下来等你确认。</p>
+          </div>
+        </details>
+        <details>
+          <summary>硬盘换了 USB 口、盘符变了，还认得出吗？</summary>
+          <div class="a">
+            <p>认得出。绑定的是磁盘硬件序列号，不是盘符，所以换口、换盘符、甚至插到另一台电脑都照样识别。</p>
+            <p>少数硬盘盒不对外暴露硬件序列号，会退一步用卷序列号——这种情况下格式化后需要重新绑定一次。</p>
+          </div>
+        </details>
+        <details>
+          <summary>需要联网吗？会上传我的文件吗？</summary>
+          <div class="a">
+            <p>不需要，也不上传。程序只在本机运行，网页控制台是 <code>127.0.0.1</code> 的本地页面，配置、日志、快照全部存在你的硬盘里。</p>
+          </div>
+        </details>
+        <details>
+          <summary>双向同步会不会互相覆盖、丢版本？</summary>
+          <div class="a">
+            <p>不会用旧文件盖新文件：两边有差异时以「最近修改的那份」为准，被覆盖的那一版进快照。同步到一半拔盘也只是标记中断，下次插入重新比对，不会把半截文件当成正常状态。</p>
+          </div>
+        </details>
+        <details>
+          <summary>一个文件夹能同时备份到几个地方？</summary>
+          <div class="a">
+            <p>不限。可以同时挂多块硬盘（各按序列号认各自的盘）和多个本地文件夹，每个目的地独立记录进度与失败重试；也可以配成 A→B、C→D 互不相干的多套任务。</p>
+          </div>
+        </details>
+        <details>
+          <summary>卸载后我的设置还在吗？</summary>
+          <div class="a">
+            <p>卸载时会问一次：勾选「保留用户数据」，同步任务、硬盘绑定、版本快照都留在原处，重装后接着用；不勾选就连同个人数据一起清理干净。</p>
+          </div>
+        </details>
+        <details>
+          <summary>支持 Windows 7 或 macOS 吗？</summary>
+          <div class="a">
+            <p>只支持 Windows 10 / 11 64 位。程序用的是系统自带的 PowerShell 5.1 与 robocopy，不需要额外安装运行时。</p>
+          </div>
+        </details>
       </div>
     </div>
   </section>

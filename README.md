@@ -4,6 +4,8 @@
 
 不用记命令、不用手动点、不用守着进度条。第一次配好，之后插盘即备份。
 
+**产品页**：https://trg-triangle11.github.io/FileSync/
+
 ---
 
 ## 特点
@@ -121,7 +123,7 @@ fliesync/
 │  ├─ console/            网页控制台前端
 │  └─ 启动-后台.vbs        无窗口启动器
 ├─ installer/             Inno Setup 打包链与安装脚本
-├─ site/                  产品介绍页（单文件 HTML）
+├─ docs/                  产品介绍页（index.html，GitHub Pages 发布目录）
 ├─ CHANGELOG.md           版本更新记录
 └─ README.md
 ```
