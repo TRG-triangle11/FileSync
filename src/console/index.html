@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>FileSync 控制台</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<link rel="preload" href="/fonts/HarmonyOS-Sans-SC-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/HarmonyOS-Sans-SC-Medium.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<!-- 图标库：整页共用一套线性图标 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-disk"><rect x="3" y="4.5" width="18" height="8" rx="2.4"/><rect x="3" y="14" width="18" height="6" rx="2.4"/><circle cx="7" cy="8.5" r="1.15" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1.15" fill="currentColor" stroke="none"/></g>
+    <g id="i-data"><path d="M4.5 7.5c0-1.4 3.4-2.5 7.5-2.5s7.5 1.1 7.5 2.5v9c0 1.4-3.4 2.5-7.5 2.5S4.5 17.9 4.5 16.5z"/><path d="M4.5 7.5c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5"/></g>
+    <g id="i-clock"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.6V12l3 1.9"/></g>
+    <g id="i-warn"><path d="M12 4.6 21 19.4H3z"/><path d="M12 10v4"/><circle cx="12" cy="16.8" r=".9" fill="currentColor" stroke="none"/></g>
+    <g id="i-check"><circle cx="12" cy="12" r="8.4"/><path d="M8.3 12.2l2.5 2.6 4.9-5.6"/></g>
+    <g id="i-arrow"><path d="M12 5v13"/><path d="M6.6 12.8 12 18.2l5.4-5.4"/></g>
+    <g id="i-sync"><path d="M20.6 5.4v5.2h-5.2"/><path d="M3.4 18.6v-5.2h5.2"/><path d="M5.3 9.7a7.5 7.5 0 0 1 12.3-2.7l3 3.2"/><path d="M18.7 14.3a7.5 7.5 0 0 1-12.3 2.7l-3-3.2"/></g>
+    <g id="i-stop"><rect x="7.4" y="7.4" width="9.2" height="9.2" rx="1.8" fill="currentColor" stroke="none"/></g>
+    <g id="i-pause"><path d="M9.3 6.8v10.4M14.7 6.8v10.4"/></g>
+    <g id="i-play"><path d="M9 6.6c0-.8.9-1.3 1.6-.9l7.3 4.9c.6.4.6 1.4 0 1.8l-7.3 4.9c-.7.4-1.6-.1-1.6-.9z" fill="currentColor" stroke="none"/></g>
+  </defs>
+</svg>
+
+<div class="app">
+
+  <!-- ════════ 侧栏 ════════ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <img src="/mark.svg" alt="" width="34" height="34">
+      <div class="brand-txt">
+        <strong>FileSync</strong>
+        <span id="brandMode">镜像同步</span>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item is-active" data-page="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="3.5" width="7" height="7" rx="2.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2.2"/></svg>
+        <span>概览</span>
+      </button>
+      <button class="nav-item" data-page="disk">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><use href="#i-disk"/></svg>
+        <span>硬盘</span>
+      </button>
+      <button class="nav-item" data-page="logs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M5 4.5h9.5L19 9v10.5H5z"/><path d="M14 4.6V9h4.4M8.2 12.6h7.2M8.2 16h5"/></svg>
+        <span>日志</span>
+      </button>
+      <button class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 14.5a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.11a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06A2 2 0 1 1 4.1 16.9l.06-.06a1.7 1.7 0 0 0 .34-1.88 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.11a1.7 1.7 0 0 0 1.56-1.1 1.7 1.7 0 0 0-.34-1.88L4.27 6.9A2 2 0 1 1 7.1 4.07l.06.06a1.7 1.7 0 0 0 1.88.34H9.1a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.11a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.88v.04a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.11a1.7 1.7 0 0 0-1.49.89Z"/></svg>
+        <span>设置</span>
+      </button>
+    </nav>
+
+    <div class="side-foot">
+      <div class="side-state">
+        <span class="led" id="sideLed"></span>
+        <div class="side-state-txt">
+          <b id="sideStateT">连接中</b>
+          <span id="sideStateS">正在读取…</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ════════ 主区 ════════ -->
+  <main class="main">
+    <header class="topbar">
+      <div class="top-titles">
+        <h1 id="pgTitle">概览</h1>
+        <p id="pgSub">这块硬盘、这个文件夹，两端一致</p>
+      </div>
+      <div class="top-actions">
+        <button class="btn btn-ghost" id="btnPause" hidden>
+          <svg class="bicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pause"/></svg>
+          <span id="btnPauseText">暂停</span>
+        </button>
+        <button class="btn btn-primary" id="btnPrimary">
+          <svg class="bicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sync"/></svg>
+          <span id="btnPrimaryText">立即同步</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content" id="content">
+
+      <!-- ═══ 概览 ═══ -->
+      <section class="page" id="page-overview">
+
+        <div class="hero" id="heroCard" data-mode="idle">
+          <div class="ring-wrap">
+            <svg class="ring" viewBox="0 0 132 132" aria-hidden="true">
+              <circle class="ring-track" cx="66" cy="66" r="57"/>
+              <circle class="ring-value" id="ringValue" cx="66" cy="66" r="57"/>
+            </svg>
+            <div class="ring-center">
+              <b id="ringNum">—</b>
+              <span id="ringUnit"></span>
+            </div>
+          </div>
+
+          <div class="hero-main">
+            <div class="hero-head">
+              <span class="pill" id="heroBadge">待命</span>
+              <span class="hero-time" id="heroTime"></span>
+            </div>
+            <h2 class="hero-title" id="heroTitle">正在读取状态…</h2>
+            <p class="hero-detail" id="heroDetail"></p>
+            <div class="chips" id="heroChips"></div>
+          </div>
+        </div>
+
+        <div class="metrics">
+          <div class="metric">
+            <span class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><use href="#i-disk"/></svg></span>
+            <div class="mb">
+              <span class="m-label">移动硬盘</span>
+              <b class="m-value" id="mDisk">未连接</b>
+              <div class="meter" id="diskMeterWrap" hidden><i id="diskMeter"></i></div>
+              <span class="m-sub" id="mDiskSub">—</span>
+            </div>
+          </div>
+          <div class="metric">
+            <span class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><use href="#i-data"/></svg></span>
+            <div class="mb">
+              <span class="m-label">数据量</span>
+              <b class="m-value" id="mSize">—</b>
+              <span class="m-sub" id="mFilesSub">—</span>
+            </div>
+          </div>
+          <div class="metric">
+            <span class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><use href="#i-clock"/></svg></span>
+            <div class="mb">
+              <span class="m-label">上次同步</span>
+              <b class="m-value" id="mLast">—</b>
+              <span class="m-sub" id="mLastSub">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="cta" id="bindCta" hidden>
+          <span class="cta-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><use href="#i-disk"/></svg></span>
+          <div class="cta-txt">
+            <b>还没绑定硬盘</b>
+            <span>插上移动硬盘，在「硬盘」页点一下，之后插盘就自动同步</span>
+          </div>
+          <button class="btn btn-primary" id="btnGoBind">去绑定</button>
+        </div>
+
+        <div class="card issues" id="issueCard" hidden>
+          <div class="issue-head">
+            <span class="issue-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#i-warn"/></svg></span>
+            <div class="issue-titles">
+              <h3 id="issueTitle">需要处理</h3>
+              <span id="issueTag" class="issue-sub"></span>
+            </div>
+          </div>
+          <ul class="issue-list" id="issueList"></ul>
+          <p class="issue-advice" id="issueAdvice" hidden></p>
+        </div>
+
+        <div class="card" id="tasksCard" hidden>
+          <div class="card-head">
+            <h3>同步任务</h3>
+            <button class="link" data-open="settings">去设置</button>
+          </div>
+          <div id="taskRows"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h3>最近活动</h3>
+            <button class="link" data-open="logs">日志文件夹</button>
+          </div>
+          <ul class="timeline" id="activityList">
+            <li class="is-empty">暂无记录</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ═══ 硬盘 ═══ -->
+      <section class="page" id="page-disk" hidden>
+        <div class="card">
+          <div class="card-head"><h3>已绑定</h3></div>
+          <div class="bind-now" id="bindNow">
+            <span class="bind-ico" id="bindIco">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><use href="#i-disk"/></svg>
+            </span>
+            <div class="bind-txt">
+              <b id="bindName">尚未绑定</b>
+              <span id="bindMeta">插上硬盘后，在下面选一块</span>
+            </div>
+            <span class="led" id="bindLed"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h3>可用的磁盘</h3>
+            <div class="head-r">
+              <span class="hint" id="diskHint"></span>
+              <button class="btn btn-ghost btn-sm" id="btnRefreshDisks">重新扫描</button>
+            </div>
+          </div>
+          <div class="disk-list" id="diskList">
+            <div class="empty">正在扫描…</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>同步范围</h3></div>
+          <div class="scope">
+            <div class="scope-row">
+              <span class="s-k">源</span>
+              <code id="kvSource">—</code>
+            </div>
+            <div class="scope-mid">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><use href="#i-arrow"/></svg>
+              <span id="scopeMode">单向镜像 · 以源端为准</span>
+            </div>
+            <div class="scope-row">
+              <span class="s-k">目标</span>
+              <code id="kvTarget">—</code>
+            </div>
+          </div>
+          <p class="note">按硬件序列号认盘，换 USB 口、改盘符也认得出。U 盘、手机、相机不动。</p>
+        </div>
+
+        <div class="card" id="histCard" hidden>
+          <div class="card-head">
+            <h3>版本历史</h3>
+            <span class="hint">双向同步的删除保护 · 保留最近 5 份快照 · 点文件可恢复到两边</span>
+          </div>
+          <div class="hist-list" id="histList"><div class="empty">插上硬盘后可查看快照</div></div>
+          <div id="histFiles" hidden>
+            <div class="hist-files-head">
+              <button class="btn btn-ghost btn-sm" id="histBack">← 返回快照列表</button>
+              <span class="hint" id="histSnapName"></span>
+            </div>
+            <div class="disk-list" id="histFileList"><div class="empty">正在读取…</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ 日志 ═══ -->
+      <section class="page" id="page-logs" hidden>
+        <div class="logs-wrap">
+          <div class="card logs-side">
+            <div class="card-head">
+              <h3>文件</h3>
+              <button class="btn btn-ghost btn-sm" id="btnReloadLogs">刷新</button>
+            </div>
+            <ul class="log-list" id="logList"><li class="empty">正在读取…</li></ul>
+          </div>
+          <div class="card logs-main">
+            <div class="card-head">
+              <h3 id="logTitle">选择一份日志</h3>
+              <span class="hint" id="logMeta"></span>
+            </div>
+            <pre class="log-body" id="logBody">左边点一份日志看内容。</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ 设置 ═══ -->
+      <section class="page" id="page-settings" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h3>同步任务</h3>
+            <span class="hint">一个任务 = 一个源目录 → 一个或多个目的地；插上对应硬盘就备份对应任务</span>
+          </div>
+          <div id="taskList"><div class="empty">正在读取…</div></div>
+          <div class="inline-row mt">
+            <button class="btn btn-ghost btn-sm" id="btnAddTask" type="button">＋ 添加任务</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>执行</h3></div>
+          <div class="form">
+            <div class="field">
+              <span class="f-label">同步方向</span>
+              <div class="seg" id="setSyncMode">
+                <button type="button" data-v="mirror">本地 → 目的地（镜像）</button>
+                <button type="button" data-v="twoway">双向同步</button>
+              </div>
+              <span class="f-help">镜像：目的地完全跟本地一致，本地删了目的地也删。双向：两边新文件互相补齐、以最近修改的版本为准；删除也同步到另一边，被删/被覆盖的文件先进版本历史（保留 5 份快照，「硬盘」页可恢复）</span>
+            </div>
+            <div class="row3">
+              <label class="field">
+                <span class="f-label">并行线程</span>
+                <input type="number" id="setThreads" min="1" max="64">
+                <span class="f-help">机械盘 4~8，固态 8~16</span>
+              </label>
+              <label class="field">
+                <span class="f-label">插盘防抖（秒）</span>
+                <input type="number" id="setDebounce" min="0" max="3600">
+                <span class="f-help">两次自动同步的最小间隔</span>
+              </label>
+              <label class="field">
+                <span class="f-label">文件夹定时（分钟）</span>
+                <input type="number" id="setFolderSync" min="0" max="10080">
+                <span class="f-help">本地文件夹目的地的自动同步间隔，0 = 关闭</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>桌面进度条</h3></div>
+          <div class="form">
+            <label class="switch-row">
+              <input type="checkbox" id="setShowWindow">
+              <span class="switch"></span>
+              <span class="switch-txt">
+                <b>启用进度条与托盘图标</b>
+                <em>关掉就纯后台运行，什么都不显示</em>
+              </span>
+            </label>
+            <div class="field">
+              <span class="f-label">什么时候出现</span>
+              <div class="seg" id="setBarMode">
+                <button type="button" data-v="auto">有事才出现</button>
+                <button type="button" data-v="always">一直显示</button>
+                <button type="button" data-v="never">只在托盘</button>
+              </div>
+            </div>
+            <div class="inline-row">
+              <button class="btn btn-ghost" id="btnShowBar" type="button">叫出进度条</button>
+              <button class="btn btn-ghost" id="btnShowConsole" type="button">打开桌面控制台</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>安全闸</h3></div>
+          <div class="form">
+            <label class="switch-row">
+              <input type="checkbox" id="setGuard">
+              <span class="switch"></span>
+              <span class="switch-txt">
+                <b>变更幅度异常时中止</b>
+                <em>源端一次删掉太多文件就停下，避免误删硬盘</em>
+              </span>
+            </label>
+            <label class="field field-narrow">
+              <span class="f-label">单次删除上限（%）</span>
+              <input type="number" id="setGuardPct" min="1" max="100">
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>排除规则</h3></div>
+          <div class="form form-grid">
+            <label class="field">
+              <span class="f-label">排除的文件夹</span>
+              <textarea id="setExcludeDirs" rows="4" spellcheck="false"></textarea>
+              <span class="f-help">每行一个，支持通配符</span>
+            </label>
+            <label class="field">
+              <span class="f-label">排除的文件</span>
+              <textarea id="setExcludeFiles" rows="4" spellcheck="false"></textarea>
+              <span class="f-help">每行一个，如 <code>~$*</code>、<code>*.tmp</code></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="save-bar">
+          <span class="save-hint" id="saveHint"></span>
+          <div class="save-actions">
+            <button class="btn btn-ghost" id="btnResetCfg">撤销</button>
+            <button class="btn btn-primary" id="btnSaveCfg">保存</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>服务</h3></div>
+          <div class="form">
+            <label class="switch-row">
+              <input type="checkbox" id="setAutostart">
+              <span class="switch"></span>
+              <span class="switch-txt">
+                <b>开机自动启动 FileSync</b>
+                <em>开机进桌面后在后台静默启动，不弹窗口；关掉开关立即取消</em>
+              </span>
+            </label>
+          </div>
+          <div class="kv">
+            <div class="kv-row"><span>网页</span><code id="kvPort">—</code></div>
+            <div class="kv-row"><span>监听</span><code id="kvWatch">—</code></div>
+          </div>
+          <div class="inline-row mt">
+            <button class="btn btn-ghost" id="btnShowGuide">查看引导</button>
+            <button class="btn btn-ghost" id="btnRestartWatch">重启监听</button>
+            <button class="btn btn-danger" id="btnStopAll">退出 FileSync</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <footer class="statusbar">
+      <div class="sb-left">
+        <span class="led" id="sbLed"></span>
+        <span id="sbText">连接中…</span>
+      </div>
+      <div class="sb-right">
+        <span id="sbPort"></span>
+        <span class="sb-sep"></span>
+        <span id="sbTick">—</span>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<!-- 初次使用引导（localStorage 记住看过就不再弹） -->
+<div class="guide-overlay" id="guideOverlay" hidden>
+  <div class="guide-card" role="dialog" aria-label="FileSync 使用引导">
+    <div class="guide-hero">
+      <svg class="guide-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sync"/></svg>
+      <h2>欢迎使用 FileSync</h2>
+      <p>你的移动硬盘<b>自动同步管家</b>——设好一次，以后插上硬盘就自动备份，什么都不用管。</p>
+    </div>
+
+    <div class="guide-grid">
+      <div class="guide-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-disk"/></svg>
+        <div>
+          <strong>镜像同步（默认）</strong>
+          <span>本地 → 硬盘，硬盘和本地保持完全一致，本地删了硬盘也删（有备份区兜底）。</span>
+        </div>
+      </div>
+      <div class="guide-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-data"/></svg>
+        <div>
+          <strong>双向同步（可选）</strong>
+          <span>在「设置 → 同步方向」切换：两边互相补齐、删除也同步，被删的文件进<b>版本历史</b>（硬盘上保留最近 5 份，随时恢复）。</span>
+        </div>
+      </div>
+      <div class="guide-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-warn"/></svg>
+        <div>
+          <strong>安全闸</strong>
+          <span>一次要删的文件超过阈值会先拦下来问你，防止误操作清空数据。</span>
+        </div>
+      </div>
+      <div class="guide-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-clock"/></svg>
+        <div>
+          <strong>全自动 · 多目标</strong>
+          <span>右下角托盘常驻，插盘自动同步；支持多个任务（A→B、C→D）、一块源目录同时备份到多块硬盘或本地文件夹。</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-steps">
+      <span><b>①</b> 设置 → 同步任务：填源目录，添加目的地（移动硬盘或本地文件夹）</span>
+      <span><b>②</b> 首次用移动硬盘：到「硬盘」页绑定一次（认序列号，换 USB 口也认得）</span>
+      <span><b>③</b> 完事。以后插上硬盘，一切自动</span>
+    </div>
+
+    <div class="guide-actions">
+      <button class="btn btn-primary" id="btnGuideStart">开始使用</button>
+      <label class="guide-skip"><input type="checkbox" id="guideDontShow" checked> 不再显示</label>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

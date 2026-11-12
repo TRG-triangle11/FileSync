@@ -1,0 +1,20 @@
+# ===== 用户个人数据（不上传）=====
+src/config.json
+src/hardware.json
+src/console.json
+src/logs/
+src/_ipc/
+
+# ===== 构建产物（不上传）=====
+installer/build/
+installer/dist/
+dist/
+历史版本/
+
+# ===== 打包工具本体（体积大，不上传）=====
+installer/tools/
+
+# ===== 系统杂项 =====
+Thumbs.db
+Desktop.ini
+~$*

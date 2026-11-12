@@ -1,0 +1,42 @@
+﻿{
+  "Version": 2,
+  "Tasks": [],
+  "Options": {
+    "Threads": 8,
+    "DebounceSeconds": 60,
+    "RetryCount": 3,
+    "RetryWaitSec": 2,
+    "ExcludeDirs": [
+      "$RECYCLE.BIN",
+      "System Volume Information",
+      " swept",
+      ".git"
+    ],
+    "ExcludeFiles": [
+      "~$*",
+      "*.tmp",
+      "Thumbs.db",
+      "desktop.ini"
+    ],
+    "BackupFolderName": "_SyncDeleted",
+    "ShowProgressWindow": true,
+    "MiniBarMode": "auto",
+    "SyncMode": "mirror",
+    "FolderSyncMinutes": 0,
+    "MoveDetect": {
+      "Enabled": true,
+      "HashMode": "sample"
+    },
+    "SafetyGuard": {
+      "Enabled": true,
+      "MaxDeletePercent": 20,
+      "MaxShrinkPercent": 20,
+      "MinFilesForCheck": 50
+    },
+    "Retention": {
+      "BackupKeepDays": 30,
+      "BackupMaxGB": 50
+    }
+  },
+  "LogDir": "logs"
+}
