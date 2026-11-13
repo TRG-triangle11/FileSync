@@ -5,6 +5,9 @@ src/console.json
 src/logs/
 src/_ipc/
 
+# ===== 编辑器/助手工作数据（含本机路径，不上传）=====
+.workbuddy/
+
 # ===== 构建产物（不上传）=====
 installer/build/
 installer/dist/
