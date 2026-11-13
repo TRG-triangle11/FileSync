@@ -748,6 +748,41 @@ $script:StaticRoutes = @{
     '/mark.svg' = 'mark.svg'
 }
 
+# 收集所有目的地的历史快照根目录：磁盘绑定（卷根）+ 文件夹目的地（目标文件夹内部）
+function Get-HistoryRoots {
+    param($Cfg)
+    $roots = New-Object System.Collections.ArrayList
+    try {
+        $ds = Get-DiskSnapshot
+        if ($ds -and $ds.Present -and $ds.Folder) {
+            $srcRoot = ''
+            if ($Cfg -and $Cfg.Tasks -and @($Cfg.Tasks).Count -gt 0) { $srcRoot = [string]@($Cfg.Tasks)[0].Source }
+            [void]$roots.Add([pscustomobject]@{
+                Label      = '硬盘'
+                Root       = (Join-Path (Split-Path -Parent ([string]$ds.Folder)) '_SyncHistory')
+                DestFolder = [string]$ds.Folder
+                Source     = $srcRoot
+            })
+        }
+    } catch { }
+    if ($Cfg) {
+        try {
+            foreach ($p in (Get-SyncPairs -Config $Cfg)) {
+                if ([string]$p.DestKind -eq 'folder') {
+                    $dst = Join-Path ([string]$p.FixedTargetRoot) ([string]$p.Sub)
+                    [void]$roots.Add([pscustomobject]@{
+                        Label      = ('文件夹 ' + $dst)
+                        Root       = (Join-Path $dst '_SyncHistory')
+                        DestFolder = $dst
+                        Source     = [string]$p.Source
+                    })
+                }
+            }
+        } catch { }
+    }
+    return $roots
+}
+
 function Invoke-Api {
     param($Context, [string]$Path, [string]$Method)
 
@@ -843,10 +878,16 @@ function Invoke-Api {
             return
         }
 
-        # 监听没在跑的时候点「立即同步」，先把监听拉起来
+        # 监听没在跑的时候点「立即同步」，先把监听拉起来；
+        # 拉不起来（比如服务以 -NoWatch 启动、监听被手动停掉且无法自启）必须如实报错，
+        # 不能返回 ok 之后指令文件没人消费、按钮点了没反应
         if (-not (Test-WatchRunning)) {
             Start-WatchProcess
             Start-Sleep -Milliseconds 900
+            if (-not (Test-WatchRunning)) {
+                Send-Json $Context ('{"ok":false,"message":' + (ConvertTo-JsonStr '监听进程未在运行，无法执行「立即同步」。请重新打开 FileSync 控制台后再试') + '}')
+                return
+            }
         }
 
         $ok = Send-IPCCommand $cmd
@@ -1105,26 +1146,28 @@ function Invoke-Api {
 
     # ---- 版本历史（双向同步的删除/覆盖保护快照，存在硬盘根目录 _SyncHistory）----
     if ($Path -eq '/api/history') {
-        $diskSnap = Get-DiskSnapshot
-        if (-not $diskSnap.Present -or -not $diskSnap.Folder) {
-            Send-Json $Context '{"ok":true,"present":false,"snaps":[]}'
-            return
-        }
-        $histRoot = Join-Path (Split-Path -Parent ([string]$diskSnap.Folder)) '_SyncHistory'
-        if (-not (Test-Path -LiteralPath $histRoot)) {
-            Send-Json $Context '{"ok":true,"present":true,"snaps":[]}'
-            return
+        $cfg = $null
+        try { $cfg = Get-SyncConfig } catch { }
+        $roots = @(Get-HistoryRoots -Cfg $cfg)
+        $merged = @{}
+        foreach ($rt in $roots) {
+            if (-not (Test-Path -LiteralPath $rt.Root)) { continue }
+            $snaps = Get-ChildItem -LiteralPath $rt.Root -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '^\d{8}-\d{6}$' }
+            foreach ($s in $snaps) {
+                if (-not $merged.ContainsKey($s.Name)) { $merged[$s.Name] = @{ files = 0; bytes = [long]0 } }
+                $fs = @(Get-ChildItem -LiteralPath $s.FullName -Recurse -File -ErrorAction SilentlyContinue)
+                $b = [long]0
+                foreach ($f in $fs) { $b += $f.Length }
+                $merged[$s.Name].files += $fs.Count
+                $merged[$s.Name].bytes += $b
+            }
         }
         $parts = New-Object System.Collections.ArrayList
-        $snaps = Get-ChildItem -LiteralPath $histRoot -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match '^\d{8}-\d{6}$' } | Sort-Object Name -Descending | Select-Object -First 5
-        foreach ($s in $snaps) {
-            $fs = @(Get-ChildItem -LiteralPath $s.FullName -Recurse -File -ErrorAction SilentlyContinue)
-            $bytes = [long]0
-            foreach ($f in $fs) { $bytes += $f.Length }
-            [void]$parts.Add(('{"name":' + (ConvertTo-JsonStr $s.Name) + ',"files":' + $fs.Count + ',"bytes":' + $bytes + '}'))
+        foreach ($k in ($merged.Keys | Sort-Object -Descending)) {
+            [void]$parts.Add(('{"name":' + (ConvertTo-JsonStr ([string]$k)) + ',"files":' + $merged[$k].files + ',"bytes":' + $merged[$k].bytes + '}'))
         }
-        Send-Json $Context ('{"ok":true,"present":true,"snaps":[' + ($parts -join ',') + ']}')
+        Send-Json $Context ('{"ok":true,"present":' + ($roots.Count -gt 0).ToString().ToLower() + ',"snaps":[' + ($parts -join ',') + ']}')
         return
     }
 
@@ -1132,18 +1175,24 @@ function Invoke-Api {
         $snap = ''
         try { $snap = [string]$Context.Request.QueryString['snap'] } catch { }
         if ($snap -notmatch '^\d{8}-\d{6}$') { Send-Json $Context '{"ok":false,"message":"快照名不合法"}' 400; return }
-        $diskSnap = Get-DiskSnapshot
-        if (-not $diskSnap.Present -or -not $diskSnap.Folder) { Send-Json $Context '{"ok":false,"message":"硬盘不在"}' 400; return }
-        $histRoot = Join-Path (Split-Path -Parent ([string]$diskSnap.Folder)) '_SyncHistory'
-        $dir = Join-Path $histRoot $snap
-        if (-not (Test-Path -LiteralPath $dir)) { Send-Json $Context '{"ok":false,"message":"快照不存在"}' 404; return }
-        $parts = New-Object System.Collections.ArrayList
-        $fs = @(Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 300)
-        foreach ($f in $fs) {
-            $rel = $f.FullName.Substring($dir.TrimEnd('\').Length + 1)
-            [void]$parts.Add(('{"rel":' + (ConvertTo-JsonStr $rel) + ',"size":' + $f.Length + '}'))
+        $cfg = $null
+        try { $cfg = Get-SyncConfig } catch { }
+        $roots = @(Get-HistoryRoots -Cfg $cfg)
+        $byRel = @{}
+        foreach ($rt in $roots) {
+            $dir = Join-Path $rt.Root $snap
+            if (-not (Test-Path -LiteralPath $dir)) { continue }
+            $fs = @(Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 300)
+            foreach ($f in $fs) {
+                $rel = $f.FullName.Substring($dir.TrimEnd('\').Length + 1)
+                if (-not $byRel.ContainsKey($rel)) { $byRel[$rel] = $f.Length }
+            }
         }
-        Send-Json $Context ('{"ok":true,"snap":' + (ConvertTo-JsonStr $snap) + ',"total":' + @(Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue).Count + ',"files":[' + ($parts -join ',') + ']}')
+        $parts = New-Object System.Collections.ArrayList
+        foreach ($k in $byRel.Keys) {
+            [void]$parts.Add(('{"rel":' + (ConvertTo-JsonStr ([string]$k)) + ',"size":' + $byRel[$k] + '}'))
+        }
+        Send-Json $Context ('{"ok":true,"snap":' + (ConvertTo-JsonStr $snap) + ',"total":' + $byRel.Count + ',"files":[' + ($parts -join ',') + ']}')
         return
     }
 
@@ -1152,21 +1201,31 @@ function Invoke-Api {
         try { $o = $body | ConvertFrom-Json; $snap = [string]$o.snap; $rel = [string]$o.rel } catch { Send-Json $Context '{"ok":false,"message":"请求格式不对"}' 400; return }
         if ($snap -notmatch '^\d{8}-\d{6}$') { Send-Json $Context '{"ok":false,"message":"快照名不合法"}' 400; return }
         if (-not $rel -or $rel -match '[\\/]\.\.([\\/]|$)' -or $rel -match '^\.\.' -or $rel -match '^[\\/]') { Send-Json $Context '{"ok":false,"message":"文件路径不合法"}' 400; return }
-        $diskSnap = Get-DiskSnapshot
-        if (-not $diskSnap.Present -or -not $diskSnap.Folder) { Send-Json $Context '{"ok":false,"message":"硬盘不在，无法恢复"}' 400; return }
         $cfg = $null
         try { $cfg = Get-SyncConfig } catch { }
         if (-not $cfg) { Send-Json $Context '{"ok":false,"message":"读不到配置"}' 500; return }
-        $histRoot = Join-Path (Split-Path -Parent ([string]$diskSnap.Folder)) '_SyncHistory'
-        $src = Join-Path (Join-Path $histRoot $snap) $rel
-        if (-not (Test-Path -LiteralPath $src)) { Send-Json $Context '{"ok":false,"message":"快照里没有这个文件"}' 404; return }
+        $roots = @(Get-HistoryRoots -Cfg $cfg)
+        $srcFull = $null
+        $srcRoot = ''
+        $haveDest = New-Object System.Collections.ArrayList
+        foreach ($rt in $roots) {
+            $cand = Join-Path (Join-Path $rt.Root $snap) $rel
+            if (Test-Path -LiteralPath $cand) {
+                if (-not $srcFull) { $srcFull = $cand; $srcRoot = [string]$rt.Source }
+                if ($rt.DestFolder -and ($haveDest -notcontains $rt.DestFolder)) { [void]$haveDest.Add($rt.DestFolder) }
+            }
+        }
+        if (-not $srcFull) { Send-Json $Context '{"ok":false,"message":"快照里没有这个文件"}' 404; return }
         $fail = @()
-        foreach ($rootDir in @([string]$diskSnap.Folder, [string]$cfg.SourcePath)) {
+        $restoreTargets = New-Object System.Collections.ArrayList
+        if ($srcRoot) { [void]$restoreTargets.Add($srcRoot) }
+        foreach ($d in $haveDest) { if ($restoreTargets -notcontains $d) { [void]$restoreTargets.Add($d) } }
+        foreach ($rootDir in $restoreTargets) {
             $dst = Join-Path $rootDir $rel
             $dstDir = Split-Path -Parent $dst
             try {
                 if ($dstDir -and -not (Test-Path -LiteralPath $dstDir)) { New-Item -ItemType Directory -Force -Path $dstDir | Out-Null }
-                Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop
+                Copy-Item -LiteralPath $srcFull -Destination $dst -Force -ErrorAction Stop
             } catch { $fail += $rootDir }
         }
         if ($fail.Count -gt 0) {
@@ -1174,7 +1233,7 @@ function Invoke-Api {
             return
         }
         Write-Serve ('已从历史快照 ' + $snap + ' 恢复：' + $rel) 'OK'
-        Send-Json $Context '{"ok":true,"message":"已恢复到本地和硬盘"}'
+        Send-Json $Context '{"ok":true,"message":"已恢复到本地和目的地"}'
         return
     }
 

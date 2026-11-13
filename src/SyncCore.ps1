@@ -1222,7 +1222,8 @@ function Start-RobocopyProcess {
         $Config,
         [string]$Source,
         [string]$Target,
-        [string]$LogFile
+        [string]$LogFile,
+        [string[]]$ExtraExcludeDirs = @()
     )
     $opt = $Config.Options
     $exe = Get-RobocopyPath
@@ -1244,6 +1245,10 @@ function Start-RobocopyProcess {
     [void]$a.Add('/NJH')   # 不打印作业头
 
     $exDirs = @($opt.ExcludeDirs | Where-Object { $_ })
+    if ($ExtraExcludeDirs.Count -gt 0) {
+        $exDirs = @($exDirs + @($ExtraExcludeDirs | Where-Object { $_ }))
+    }
+    $exDirs = @($exDirs | Select-Object -Unique)
     if ($exDirs.Count -gt 0) {
         [void]$a.Add('/XD')
         foreach ($d in $exDirs) { [void]$a.Add(('"{0}"' -f $d)) }
@@ -1750,6 +1755,11 @@ function Invoke-SyncTaskInternal {
     Update-ProgressUI -Title '正在比对文件差异' -Detail '扫描源目录与目标目录…' -Percent 10 -State 'Work'
     $exDirs  = @($opt.ExcludeDirs  | Where-Object { $_ })
     $exFiles = @($opt.ExcludeFiles | Where-Object { $_ })
+    if ($FixedTargetRoot) {
+        # 文件夹目的地：备份区（_SyncDeleted）与双向历史（_SyncHistory）都在目标文件夹内部，
+        # 比对时必须排除，否则会被当作"目标端多余内容"而遭删除
+        $exDirs  = @($exDirs + @([string]$opt.BackupFolderName, '_SyncHistory') | Where-Object { $_ } | Select-Object -Unique)
+    }
 
     $cmp = Compare-SyncTree -Source $Config.SourcePath -Target $targetPath -ExcludeDirs $exDirs -ExcludeFiles $exFiles
 
@@ -2018,9 +2028,15 @@ function Invoke-SyncTaskInternal {
     # ---- 步骤 4：备份删除项 ----
     $backupInfo = $null
     if ($delCount -gt 0 -and $opt.SafetyBackupDeleted -ne $false) {
-        $bRoot = Join-Path $targetRoot ([string]$opt.BackupFolderName)
-        $bDir  = Join-Path $bRoot ((Get-Date -Format 'yyyyMMdd-HHmmss'))
-        $bDir  = Join-Path $bDir ([string]$Config.TargetFolderName)
+        if ($FixedTargetRoot) {
+            # 文件夹目的地：备份放在目标文件夹内部（上面的比对排除与 robocopy /XD 都盖住了它）
+            $bRoot = Join-Path $targetPath ([string]$opt.BackupFolderName)
+            $bDir  = Join-Path $bRoot ((Get-Date -Format 'yyyyMMdd-HHmmss'))
+        } else {
+            $bRoot = Join-Path $targetRoot ([string]$opt.BackupFolderName)
+            $bDir  = Join-Path $bRoot ((Get-Date -Format 'yyyyMMdd-HHmmss'))
+            $bDir  = Join-Path $bDir ([string]$Config.TargetFolderName)
+        }
         Write-Log ("发现 {0} 个多余文件，先备份到 {1}" -f $delCount, $bDir) -Level INFO -LogFile $logFile
         Update-ProgressUI -Title '正在备份将被删除的文件' -Detail ("共 {0} 个" -f $delCount) -Percent 15 -State 'Work'
         $delRels = @($delItems | ForEach-Object { $_.Rel })
@@ -2036,7 +2052,13 @@ function Invoke-SyncTaskInternal {
     $freeBefore = [long](Get-Volume -DriveLetter $vol.Letter -ErrorAction SilentlyContinue).SizeRemaining
     if (-not $freeBefore) { $freeBefore = $free }
 
-    $proc = Start-RobocopyProcess -Config $Config -Source $Config.SourcePath -Target $targetPath -LogFile $rcLog
+    # robocopy /MIR 会清掉"目标端多余内容"；文件夹目的地的备份区与双向历史都在目标文件夹内部，
+    # 必须用 /XD 排除（名字排除，源端同名目录也不会拷——与双向模式的排除语义一致）
+    $mirrorXD = @()
+    if ($FixedTargetRoot) {
+        $mirrorXD = @([string]$opt.BackupFolderName, '_SyncHistory')
+    }
+    $proc = Start-RobocopyProcess -Config $Config -Source $Config.SourcePath -Target $targetPath -LogFile $rcLog -ExtraExcludeDirs $mirrorXD
     Write-Log ("robocopy 已启动，PID {0}" -f $proc.Id) -LogFile $logFile
 
     $totalBytes = [long]$copyBytes
@@ -2872,12 +2894,17 @@ function Invoke-SyncTask {
                         Save-SyncState -SourceCount $r.SourceCount -SourceBytes $r.SourceBytes -TargetLetter $r.TargetLetter -SourcePath $cfgNow.SourcePath
                     }
                 }
-                # 保留清理只在真正同步成功后做，失败时不碰硬盘
-                if ($r.Code -eq 'SUCCESS' -or $r.Code -eq 'PARTIAL') {
-                    $targetRootForCleanup = $null
-                    if ($r.PSObject.Properties['TargetRoot']) { $targetRootForCleanup = $r.TargetRoot }
-                    Invoke-RetentionCleanup -Config $cfgNow -TargetRoot $targetRootForCleanup -LogFile $r.LogFile
-                }
+        # 保留清理只在真正同步成功后做，失败时不碰硬盘
+        if ($r.Code -eq 'SUCCESS' -or $r.Code -eq 'PARTIAL') {
+            $targetRootForCleanup = $null
+            if ($r.PSObject.Properties['TargetRoot']) { $targetRootForCleanup = $r.TargetRoot }
+            # 文件夹目的地：备份区在目标文件夹内部（FixedTargetRoot + TargetFolderName），
+            # 而不是盘根——否则保留清理永远扫不到它
+            if ($cfgNow.PSObject.Properties.Name -contains 'FixedTargetRoot' -and [string]$cfgNow.FixedTargetRoot) {
+                $targetRootForCleanup = Join-Path ([string]$cfgNow.FixedTargetRoot) ([string]$cfgNow.TargetFolderName)
+            }
+            Invoke-RetentionCleanup -Config $cfgNow -TargetRoot $targetRootForCleanup -LogFile $r.LogFile
+        }
             }
         }
         return $r
