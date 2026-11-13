@@ -420,7 +420,7 @@ function Enable-AutoStart {
         $sc.WorkingDirectory = $here
         $sc.WindowStyle      = 1
         $sc.Description      = 'FileSync 开机自启（后台静默，无窗口）'
-        $ico = Join-Path $here 'disksync.ico'
+        $ico = Join-Path $here 'FileSync.ico'
         if (Test-Path -LiteralPath $ico) { $sc.IconLocation = $ico + ',0' }
         $sc.Save()
         return @{ Ok = $true; Message = '已开启：开机进桌面后 FileSync 会静默自启' }

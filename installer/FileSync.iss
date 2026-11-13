@@ -52,7 +52,7 @@ Filename: "{app}\README.md"; Description: "查看使用说明（README）"; Flag
 
 ; 卸载时先把还在跑的服务和监听停掉（避免文件占用删不干净）
 [UninstallRun]
-Filename: "{sys}\cmd.exe"; Parameters: "/C powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {#StopB64}"; Flags: runhidden waituntilterminated
+Filename: "{sys}\cmd.exe"; Parameters: "/C powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {#StopB64}"; Flags: runhidden waituntilterminated; RunOnceId: "StopFileSync"
 
 ; 开机自启的快捷方式不在安装包管理范围内，卸载时一并清掉
 [UninstallDelete]

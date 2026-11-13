@@ -79,8 +79,18 @@ if (-not (Test-Path -LiteralPath $iscc)) {
     exit 1
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $root 'dist') | Out-Null
-& $iscc "/DAppVer=$Version" "/DStopB64=$stopB64" "/DRoot=$root" $issPath
-if ($LASTEXITCODE -ne 0) {
+
+# ISCC 会把编译进度和警告写到 stderr；在本脚本的 Stop 模式下，这些警告会被当成
+# 终止错误，导致「已经打包成功」却中断在成功提示之前。这里显式接管输出流，
+# 只看退出码判断成败。
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+& $iscc "/DAppVer=$Version" "/DStopB64=$stopB64" "/DRoot=$root" $issPath 2>&1 |
+    ForEach-Object { Write-Host ('    ' + [string]$_) -ForegroundColor DarkGray }
+$isccCode = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
+
+if ($isccCode -ne 0) {
     Write-Host '  [错误] ISCC 编译失败。' -ForegroundColor Red
     exit 1
 }

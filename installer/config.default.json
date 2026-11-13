@@ -9,7 +9,6 @@
     "ExcludeDirs": [
       "$RECYCLE.BIN",
       "System Volume Information",
-      " swept",
       ".git"
     ],
     "ExcludeFiles": [

@@ -114,7 +114,7 @@
 ## 目录结构
 
 ```
-fliesync/
+FileSync/
 ├─ src/                   程序本体（打包进安装程序的就是这些）
 │  ├─ SyncCore.ps1        同步引擎
 │  ├─ Watch-FileSync.ps1  后台主循环（检测插盘 / 定时）
@@ -123,7 +123,12 @@ fliesync/
 │  ├─ console/            网页控制台前端
 │  └─ 启动-后台.vbs        无窗口启动器
 ├─ installer/             Inno Setup 打包链与安装脚本
+│  ├─ FileSync.iss        安装脚本
+│  ├─ 打包-安装包.ps1      打包入口
+│  ├─ version.txt         版本号
+│  └─ dist/               打包产物（最新安装包）
 ├─ docs/                  产品介绍页（index.html，GitHub Pages 发布目录）
+├─ archive/               旧版本安装包存档
 ├─ CHANGELOG.md           版本更新记录
 └─ README.md
 ```
