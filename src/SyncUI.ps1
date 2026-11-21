@@ -40,6 +40,7 @@ $script:OnOpenWeb   = $null              # 点通知时打开网页控制台的�
 $script:WebPort     = 7788               # 网页控制台端口（监听进程会同步真实值）
 $script:ToastAumid  = 'TRG.FileSync.Desktop'   # 与安装程序里的 AppUserModelID 保持一致
 $script:UserMoved   = $false             # 用户手动拖过窗口：不再自动拽回右下角
+$script:LastToastAt = [DateTime]::MinValue   # 连点去抖
 
 # 迷你条的存在感：auto = 有事才出现（默认），always = 常驻，never = 只在托盘
 $script:MiniBarMode   = 'auto'
@@ -54,6 +55,7 @@ $script:UIState = @{
     Percent    = 0
     Title      = '待命中'
     Detail     = ''
+    Action     = ''          # 本次同步结果摘要（已同步 N 个文件…）
     Meta       = ''
     HintLine   = ''
     Connected  = $null       # $null 未检测 / $true / $false
@@ -859,6 +861,10 @@ function New-ProgressWindow {
                 if ($script:UIMode -ne 'Mini') { return }
                 if (Test-FromButton $e.OriginalSource) { return }
                 if (-not $script:UI.Ctl.MiniView.IsMouseOver) { return }
+                # 连点/双击会重复触发，700ms 内只认一次
+                $now = [DateTime]::Now
+                if (($now - $script:LastToastAt).TotalMilliseconds -lt 700) { return }
+                $script:LastToastAt = $now
                 Show-StatusToast
             } catch {
                 try {
@@ -1744,6 +1750,7 @@ function Set-UIStatus {
         [string]$Files,
         [string]$Size,
         [string]$LastSync,
+        [string]$Action,
         [string]$Footer
     )
     if ($PSBoundParameters.ContainsKey('Connected'))  { $script:UIState.Connected  = $Connected }
@@ -1752,6 +1759,7 @@ function Set-UIStatus {
     if ($PSBoundParameters.ContainsKey('Files'))      { $script:UIState.Files      = $Files }
     if ($PSBoundParameters.ContainsKey('Size'))       { $script:UIState.Size       = $Size }
     if ($PSBoundParameters.ContainsKey('LastSync'))   { $script:UIState.LastSync   = $LastSync }
+    if ($PSBoundParameters.ContainsKey('Action'))     { $script:UIState.Action     = $Action }
     if ($PSBoundParameters.ContainsKey('Footer'))     { $script:UIState.Footer     = $Footer }
     if (Test-UIAlive) { Update-UISurface }
     Save-UIStatus
@@ -1892,15 +1900,17 @@ function Show-NativeToast {
 function Show-StatusToast {
     <#
         点迷你条时调用：把条上被省略号截断的内容完整放进系统通知。
-        Windows 10/11 会把托盘气泡并入通知中心，所以这里不需要额外注册。
+        内容按状态区分：进行中给「在做什么 + 预计用时 + 拔盘提示」，
+        完成后给「这次同步了什么 + 总容量」。标题不重复应用名（通知卡片已显示 FileSync）。
     #>
     param([int]$Seconds = 10)
     $s = $script:UIState
     if (-not $s) { return $false }
 
+    $mode = [string]$s.Mode
     $head = [string]$s.Title
     if (-not $head) {
-        $head = switch ([string]$s.Mode) {
+        $head = switch ($mode) {
             'Work'  { '正在同步' }
             'Done'  { '同步完成' }
             'Warn'  { '需要注意' }
@@ -1908,64 +1918,80 @@ function Show-StatusToast {
             default { '监听中' }
         }
     }
-    if ([string]$s.Mode -eq 'Work' -and [int]$s.Percent -gt 0) {
-        $head += (' · {0}%' -f [int]$s.Percent)
-    }
+    if ($mode -eq 'Work' -and [int]$s.Percent -gt 0) { $head += (' · {0}%' -f [int]$s.Percent) }
+    # 没有变化也是"同步完成"，标题统一，差异写在正文里
+    if ($mode -eq 'Done' -and $head -eq '已是最新') { $head = '同步完成' }
 
-    $lines = New-Object System.Collections.ArrayList
-    foreach ($t in @($s.Detail, $s.Hint, $s.Advice)) {
-        if ($t -and ([string]$t).Trim()) { [void]$lines.Add(([string]$t).Trim()) }
+    $total = ''
+    if ($s.Size -and [string]$s.Size -ne '—') { $total = [string]$s.Size }
+
+    $line1 = ''
+    $line2 = ''
+    if ($mode -eq 'Done') {
+        # 结果只说两件事：这次同步了什么、备份有多大。用时放面板里，不占通知。
+        $line1 = [string]$s.Action
+        if (-not $line1) {
+            $d = [string]$s.Detail
+            if ($d) { $line1 = ($d -split ' · ')[0] } else { $line1 = '同步完成' }
+        }
+        if ($total) { $line2 = ('总容量 ' + $total) }
+    } elseif ($mode -eq 'Warn' -or $mode -eq 'Error') {
+        $line1 = [string]$s.Detail
+        if (-not $line1) { $line1 = $head }
+        $hint = [string]$s.HintLine
+        if (-not $hint) { $hint = [string]$s.Advice }
+        if ($hint) { $line2 = $hint }
+        elseif ($total) { $line2 = ('总容量 ' + $total) }
+    } else {
+        # 进行中 / 待命：当前动作 + 预计用时与拔盘提示
+        $line1 = [string]$s.Detail
+        if (-not $line1) { $line1 = $head }
+        $line2 = [string]$s.HintLine
+        if (-not $line2) {
+            if ($total -and $s.DiskLetter) { $line2 = ('硬盘 {0} · 总容量 {1}' -f $s.DiskLetter, $total) }
+        }
+    }
+    if (-not $line2) { $line2 = '点此打开网页控制台' }
+
+    # 回退菜单（托盘气泡）能显示更多行，这里保留完整文本
+    $long = New-Object System.Collections.ArrayList
+    if ($mode -eq 'Done' -and $s.Action) { [void]$long.Add([string]$s.Action) }
+    foreach ($t in @($s.Detail, $s.HintLine, $s.Advice)) {
+        if ($t -and ([string]$t).Trim()) { [void]$long.Add(([string]$t).Trim()) }
     }
     $meta = New-Object System.Collections.ArrayList
     if ($s.DiskLetter) { [void]$meta.Add(('硬盘 ' + [string]$s.DiskLetter)) }
-    if ($s.Files -and [string]$s.Files -ne '—') { [void]$meta.Add(('文件 ' + [string]$s.Files)) }
-    if ($s.Size  -and [string]$s.Size  -ne '—') { [void]$meta.Add([string]$s.Size) }
+    if ($total) { [void]$meta.Add(('总容量 ' + $total)) }
     if ($s.LastSync -and [string]$s.LastSync -ne '—') { [void]$meta.Add(('上次 ' + [string]$s.LastSync)) }
-    if ($meta.Count -gt 0) { [void]$lines.Add(($meta -join ' · ')) }
-
+    if ($meta.Count -gt 0) { [void]$long.Add(($meta -join ' · ')) }
     $cnt = 0
     try { $cnt = Get-UINoticeCount } catch { }
-    if ($cnt -gt 0) { [void]$lines.Add(('另有 {0} 条待处理提示' -f $cnt)) }
-    [void]$lines.Add('点此通知打开网页控制台')
+    if ($cnt -gt 0) { [void]$long.Add(('另有 {0} 条待处理提示' -f $cnt)) }
+    if ($long.Count -eq 0) { [void]$long.Add('点此打开网页控制台') }
 
-    $text = ($lines -join "`r`n")
-    if ($text.Length -gt 460) { $text = $text.Substring(0, 460) + '…' }
-    $lvl = switch ([string]$s.Mode) {
+    $lvl = switch ($mode) {
         'Warn'  { 'Warn' }
         'Error' { 'Error' }
         default { 'Info' }
     }
 
-    # 优先走系统通知中心（应用名显示 FileSync，点一下开网页）。
-    # 通知中心不可用（被策略关掉、AUMID 没注册）时回退托盘气泡。
-    $line1 = ''
-    foreach ($t in @($s.Detail, $s.Hint, $s.Advice)) {
-        if ($t -and ([string]$t).Trim()) {
-            if ($line1) { $line1 += ' · ' }
-            $line1 += ([string]$t).Trim()
-        }
-    }
-    $line2 = ''
-    if ($meta.Count -gt 0) { $line2 = ($meta -join ' · ') }
-    if ($cnt -gt 0) { $line2 = $(if ($line2) { $line2 + '　' } else { '' }) + ('另有 {0} 条提示' -f $cnt) }
-    if (-not $line1) { $line1 = $line2; $line2 = '' }
-    if (-not $line2) { $line2 = '点此打开网页控制台' }
-
     $native = $false
     try {
         $url = 'http://127.0.0.1:{0}/' -f [int]$script:WebPort
-        $native = Show-NativeToast -Title ('FileSync · ' + $head) -Lines @($line1, $line2) -Url $url
+        $native = Show-NativeToast -Title $head -Lines @($line1, $line2) -Url $url
     } catch { $native = $false }
 
     $ok = $native
     if (-not $native) {
+        $text = ($long -join "`r`n")
+        if ($text.Length -gt 460) { $text = $text.Substring(0, 460) + '…' }
         $ok = Show-Toast -Title ('FileSync · ' + $head) -Text $text -Level $lvl -Seconds $Seconds
     }
 
-    # 留个痕迹：点了没反应时能查是"没点到"还是"通知被系统拦了"
     try {
         $trace = Join-Path ([System.IO.Path]::GetTempPath()) 'filesync-toast.log'
-        $line = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ok=' + [string]$ok + '  native=' + [string]$native + '  ' + $head + '  ' + ($lines -join ' / ') + "`r`n"
+        try { if ((Get-Item -LiteralPath $trace -ErrorAction SilentlyContinue).Length -gt 65536) { Remove-Item -LiteralPath $trace -Force } } catch { }
+        $line = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ok=' + [string]$ok + '  native=' + [string]$native + '  [' + $head + '] ' + $line1 + ' || ' + $line2 + "`r`n"
         [System.IO.File]::AppendAllText($trace, $line, (New-Object System.Text.UTF8Encoding($false)))
     } catch { }
     return $ok

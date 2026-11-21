@@ -278,6 +278,24 @@ function Get-VolumeList {
       3. 卷序列号 (Get-Volume.SerialNumber)
     盘符永不写死，每次动态解析。
 #>
+function Get-EtaText {
+    <#
+        粗略估算本次要写多久：按 USB 3.0 常见 80 MB/s 打底。
+        只用于"大概还要多久"的提示，真实速度受硬盘与文件分布影响。
+    #>
+    param([long]$Bytes, [int]$MBps = 80)
+    if ($MBps -lt 1) { $MBps = 80 }
+    if ($Bytes -le 0) { return '几秒' }
+    $sec = [int][Math]::Ceiling((($Bytes / 1MB) / $MBps))
+    if ($sec -lt 8)  { return '几秒' }
+    if ($sec -lt 60) { return ('{0} 秒' -f $sec) }
+    $min = [int][Math]::Round($sec / 60)
+    if ($min -lt 60) { return ('{0} 分钟' -f $min) }
+    $h = [int][Math]::Floor($min / 60); $m = $min % 60
+    if ($m -le 0) { return ('{0} 小时' -f $h) }
+    return ('{0} 小时 {1} 分钟' -f $h, $m)
+}
+
 function Resolve-TargetDrive {
     param($Config, $Hardware = $null)
 
@@ -1993,6 +2011,7 @@ function Invoke-SyncTaskInternal {
     if ($copyCount -eq 0 -and $delCount -eq 0 -and $movedPairs.Count -eq 0 -and @($cmp.MissingDirs).Count -eq 0) {
         Write-Log '两端已完全一致，无需同步' -Level OK -LogFile $logFile
         Update-ProgressUI -Title '已是最新' -Detail ("{0} 个文件，两端完全一致" -f $cmp.SourceCount) -Hint '可以安全拔出硬盘' -Percent 100 -State 'Done'
+        Set-UIStatus -Action '已是最新，内容没有变化'
         Close-ProgressWindow -DelaySeconds $(if ($Auto) { 6 } else { 8 })
         $result.Ok = $true; $result.Code = 'UPTODATE'; $result.Message = '两端已一致'
         $result.Elapsed = $sw.Elapsed
@@ -2065,7 +2084,9 @@ function Invoke-SyncTaskInternal {
     }
 
     # ---- 步骤 5：执行同步 ----
-    Update-ProgressUI -Title '正在同步到移动硬盘' -Detail '启动 robocopy…' -Hint '同步进行中，请勿拔出硬盘' -Percent 20 -State 'Work'
+    $eta = Get-EtaText -Bytes $copyBytes
+    $etaText = $(if ($eta -eq '几秒') { '预计几秒' } else { '预计约 ' + $eta })
+    Update-ProgressUI -Title '正在同步到移动硬盘' -Detail ('共 {0} 个文件 · {1:N2} GB' -f $copyItems.Count, ($copyBytes/1GB)) -Hint ($etaText + ' · 同步中请勿拔盘，完成后用「安全删除硬件」弹出') -Percent 20 -State 'Work'
     $freeBefore = [long](Get-Volume -DriveLetter $vol.Letter -ErrorAction SilentlyContinue).SizeRemaining
     if (-not $freeBefore) { $freeBefore = $free }
 
@@ -2298,6 +2319,14 @@ function Invoke-SyncTaskInternal {
         $detailDone += (" · 删除 {0} 个" -f $delCount)
     }
 
+    # 通知里只讲「这次做了什么」，不讲用时（用户要的是结果，不是耗时）
+    $actionText = ('已同步 {0} 个文件' -f $realCopied)
+    $actExtra = @()
+    if ($delCount -gt 0) { $actExtra += ('删除 {0} 个' -f $delCount) }
+    if ($mvOk -gt 0)     { $actExtra += ('移动 {0} 个' -f $mvOk) }
+    if ($actExtra.Count -gt 0) { $actionText += ('（' + ($actExtra -join '，') + '）') }
+    if ($realCopied -le 0 -and $actExtra.Count -eq 0) { $actionText = '已是最新，内容没有变化' }
+
     $hintDone = '可以安全拔出硬盘'
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if (-not $isAdmin) { $hintDone = '请先「安全删除硬件」再拔盘' }
@@ -2333,7 +2362,7 @@ function Invoke-SyncTaskInternal {
         # 进度条走琥珀色而不是红色：数据确实同步了绝大部分，红色会让人以为整次同步作废。
         # 标题不再带"3 个文件未能复制"——下面的问题卡片已经写了，重复两遍是噪音。
         Update-ProgressUI -Title '部分完成' -Detail $detailDone -Hint $hintPart -Percent 100 -State 'Warn'
-        Set-UIStatus -LastSync '刚刚' -Connected $true
+        Set-UIStatus -LastSync '刚刚' -Connected $true -Action ('已同步 {0} 个文件（{1} 个未成功）' -f $realCopied, [Math]::Max(1, $failFiles.Count))
         if (-not (Test-UIAlive)) {
             [void](Show-Toast -Title ('FileSync · 部分完成：' + $detailPart) -Text (("其余已同步。" + $hintPart)) -Level 'Warn' -Seconds 8)
         }
@@ -2345,7 +2374,7 @@ function Invoke-SyncTaskInternal {
     }
 
     Write-Log ('同步完成：' + $detailDone) -Level OK -LogFile $logFile
-    Set-UIStatus -LastSync '刚刚' -Connected $true
+    Set-UIStatus -LastSync '刚刚' -Connected $true -Action $actionText
     # 同步成功但过程中有非致命提醒（例如写缓存刷新失败），标题要体现出来
     $nc = Get-UINoticeCount
     if ($nc -gt 0) {
@@ -2800,6 +2829,15 @@ function Invoke-TwoWaySync {
     if ($keepModified -gt 0) { $detail += ("，{0} 个因另一端改过而保留" -f $keepModified) }
     if ($totalFailed -gt 0) { $detail += ("，失败 {0} 个" -f $totalFailed) }
     Write-Log ('双向同步完成：' + $detail) -Level $(if ($totalFailed -gt 0) { 'WARN' } else { 'OK' }) -LogFile $logFile
+
+    # 通知里的结果摘要（双向）：说清两边各补了多少、删了多少
+    $twAction = ('已同步 {0} 个文件' -f $totalCopied)
+    $twExtra = @()
+    if ($totalDel -gt 0) { $twExtra += ('删除 {0} 个' -f $totalDel) }
+    if ($twExtra.Count -gt 0) { $twAction += ('（' + ($twExtra -join '，') + '）') }
+    if ($totalCopied -le 0 -and $totalDel -le 0) { $twAction = '已是最新，内容没有变化' }
+    if ($totalFailed -gt 0) { $twAction += ('，{0} 个未成功' -f $totalFailed) }
+    Set-UIStatus -Action $twAction
 
     if ($totalCopied -eq 0 -and $totalFailed -eq 0 -and $totalDel -eq 0) {
         Update-ProgressUI -Title '已是最新' -Detail '两端没有需要互相补齐的文件' -Hint '可以安全拔出硬盘' -Percent 100 -State 'Done'
