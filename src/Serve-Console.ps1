@@ -1182,11 +1182,11 @@ function Invoke-Api {
         $merged = @{}
         foreach ($rt in $roots) {
             if (-not (Test-Path -LiteralPath $rt.Root)) { continue }
-            $snaps = Get-ChildItem -LiteralPath $rt.Root -Directory -ErrorAction SilentlyContinue |
+            $snaps = Get-ChildItem -LiteralPath $rt.Root -Directory -Force -ErrorAction SilentlyContinue |
                 Where-Object { $_.Name -match '^\d{8}-\d{6}$' }
             foreach ($s in $snaps) {
                 if (-not $merged.ContainsKey($s.Name)) { $merged[$s.Name] = @{ files = 0; bytes = [long]0 } }
-                $fs = @(Get-ChildItem -LiteralPath $s.FullName -Recurse -File -ErrorAction SilentlyContinue)
+                $fs = @(Get-ChildItem -LiteralPath $s.FullName -Recurse -File -Force -ErrorAction SilentlyContinue)
                 $b = [long]0
                 foreach ($f in $fs) { $b += $f.Length }
                 $merged[$s.Name].files += $fs.Count
@@ -1212,7 +1212,7 @@ function Invoke-Api {
         foreach ($rt in $roots) {
             $dir = Join-Path $rt.Root $snap
             if (-not (Test-Path -LiteralPath $dir)) { continue }
-            $fs = @(Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 300)
+            $fs = @(Get-ChildItem -LiteralPath $dir -Recurse -File -Force -ErrorAction SilentlyContinue | Select-Object -First 300)
             foreach ($f in $fs) {
                 $rel = $f.FullName.Substring($dir.TrimEnd('\').Length + 1)
                 if (-not $byRel.ContainsKey($rel)) { $byRel[$rel] = $f.Length }

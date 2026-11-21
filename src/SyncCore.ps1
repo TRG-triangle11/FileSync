@@ -1209,6 +1209,29 @@ function Find-MovedPairs {
 # ============================================================
 # 删除项备份
 # ============================================================
+<#
+    Set-FolderHidden
+    _SyncDeleted / _SyncHistory 是程序自己的工作区，不属于用户文件。
+    给它们打上 Hidden+System：资源管理器默认不显示，勾了「显示隐藏的项目」
+    也不会冒出来（System 属性的目录仍然隐藏）。失败不影响同步。
+#>
+function Set-FolderHidden {
+    param([string]$Path)
+    if (-not $Path) { return }
+    try {
+        # 盘根（F:\）绝不打隐藏：配置里 BackupFolderName 为空时路径会退化到盘根
+        $full = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+        if ($full -match '^[A-Za-z]:$') { return }
+        if (-not (Test-Path -LiteralPath $Path)) { return }
+        $i = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        $hidden = [System.IO.FileAttributes]::Hidden
+        $system = [System.IO.FileAttributes]::System
+        if (-not (($i.Attributes -band $hidden) -eq $hidden) -or -not (($i.Attributes -band $system) -eq $system)) {
+            $i.Attributes = $i.Attributes -bor $hidden -bor $system
+        }
+    } catch { }
+}
+
 function Backup-DeletedItems {
     param(
         [string]$TargetRoot,
@@ -1775,6 +1798,15 @@ function Invoke-SyncTaskInternal {
     $targetRoot = $envCheck.TargetRoot
     Write-Log ("目标：{0}" -f $targetPath) -LogFile $logFile
 
+    # 备份区不该出现在用户翻硬盘的视野里。
+    # 硬盘目的地的备份区在卷根（F:\_SyncDeleted）——必须在镜像范围之外，
+    # 否则会被当成"多余文件"删掉；这里只给它打隐藏属性，位置不动。
+    # 注意：BackupFolderName 为空时 Join-Path 会得到盘根/目标文件夹本身，绝不能给它打隐藏。
+    $bn = [string]$opt.BackupFolderName
+    if (-not $FixedTargetRoot -and $bn) {
+        Set-FolderHidden (Join-Path ([string]$targetRoot) $bn)
+    }
+
     # 目标文件夹不存在、但历史上有成功同步记录：多半是目标上的文件夹被删掉或改了名。
     # 这种情况会触发全量复制，大目录要很久，得先让用户知道。
     if (-not (Test-Path -LiteralPath $targetPath)) {
@@ -2074,6 +2106,12 @@ function Invoke-SyncTaskInternal {
             $bDir  = Join-Path $bDir ([string]$Config.TargetFolderName)
         }
         Write-Log ("发现 {0} 个多余文件，先备份到 {1}" -f $delCount, $bDir) -Level INFO -LogFile $logFile
+        # 隐藏备份根（_SyncDeleted），别让用户翻硬盘时看到一堆时间戳目录。
+        # BackupFolderName 为空时 $bRoot 会是目标文件夹本身，那种情况跳过。
+        if ([string]$opt.BackupFolderName) {
+            if (-not (Test-Path -LiteralPath $bRoot)) { New-Item -ItemType Directory -Force -Path $bRoot | Out-Null }
+            Set-FolderHidden $bRoot
+        }
         Update-ProgressUI -Title '正在备份将被删除的文件' -Detail ("共 {0} 个" -f $delCount) -Percent 15 -State 'Work'
         $delRels = @($delItems | ForEach-Object { $_.Rel })
         $backupInfo = Backup-DeletedItems -TargetRoot $targetPath -RelativePaths $delRels -BackupRoot $bDir -LogFile $logFile
@@ -2569,6 +2607,7 @@ function Save-TwoWayManifest {
         [string[]]$ExFiles
     )
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ManifestPath) | Out-Null
+    Set-FolderHidden (Split-Path -Parent $ManifestPath)
     $finalL = (Get-FileMap -Root $SourcePath -ExcludeDirs $ExDirs -ExcludeFiles $ExFiles).Map
     $finalD = (Get-FileMap -Root $TargetPath  -ExcludeDirs $ExDirs -ExcludeFiles $ExFiles).Map
     $sbM = New-Object System.Text.StringBuilder
@@ -2602,7 +2641,7 @@ function Save-TwoWayManifest {
 function Prune-TwoWayHistory {
     param([string]$HistRoot, [int]$Keep = 5)
     if (-not (Test-Path -LiteralPath $HistRoot)) { return 0 }
-    $old = @(Get-ChildItem -LiteralPath $HistRoot -Directory -ErrorAction SilentlyContinue |
+    $old = @(Get-ChildItem -LiteralPath $HistRoot -Directory -Force -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '^\d{8}-\d{6}$' } | Sort-Object Name -Descending)
     $i = 0
     foreach ($s in $old) {
@@ -2735,6 +2774,7 @@ function Invoke-TwoWaySync {
     $hist = Invoke-TwoWayHistory -SourcePath $Config.SourcePath -TargetPath $targetPath `
         -HistRoot $histRoot -ManifestPath $manifestPath -ExDirs $exDirs -ExFiles $exFiles `
         -LogFile $logFile
+    Set-FolderHidden $histRoot
     $mapL         = $hist.MapL
     $mapD         = $hist.MapD
     $delOnDisk    = $hist.DelOnDisk
