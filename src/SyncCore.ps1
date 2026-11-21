@@ -2266,9 +2266,15 @@ function Invoke-SyncTaskInternal {
                 }
             }
         }
-        Write-Log ("补建目录 {0} 个" -f $dirsCreated) -LogFile $logFile
-        if ($dirsCreated -lt $missingDirs.Count) {
-            [void](Add-UINotice -Level 'Warn' -Reason '建目录失败' -Target ("{0} 个空目录没能建出来" -f ($missingDirs.Count - $dirsCreated)) -Advice '不影响文件内容，但硬盘上会缺这几个空文件夹')
+        # robocopy 自己也会把目录建好，所以「没补建的」不等于「没建出来」。
+        # 只复核真正仍然不存在的，避免把已就绪的目录误报成失败。
+        $stillMissing = 0
+        foreach ($d in $missingDirs) {
+            if (-not (Test-Path -LiteralPath (Join-Path $targetPath $d))) { $stillMissing++ }
+        }
+        Write-Log ("补建目录：比对时缺 {0} 个，本次补建 {1} 个，仍缺 {2} 个" -f $missingDirs.Count, $dirsCreated, $stillMissing) -LogFile $logFile
+        if ($stillMissing -gt 0) {
+            [void](Add-UINotice -Level 'Warn' -Reason '建目录失败' -Target ("{0} 个空目录没能建出来" -f $stillMissing) -Advice '不影响文件内容，但硬盘上会缺这几个空文件夹')
         }
         # 建目录也是写操作，同样要落盘
         if ($dirsCreated -gt 0) { [void](Sync-VolumeCache -Letter $vol.Letter -LogFile $logFile) }
