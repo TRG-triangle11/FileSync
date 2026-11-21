@@ -110,6 +110,10 @@ function Initialize-WatchUI {
     Set-UIStatus -Connected $false -Footer (Update-FooterText)
     if (-not $uiOn) { return }
 
+    # 点通知 / 托盘时要能打开网页控制台，端口以监听实际用的为准
+    $script:WebPort   = [int]$script:Port
+    $script:OnOpenWeb = { Open-WebConsole }
+
     # 监听模式：窗口常驻，叉掉只隐藏。这样不会出现"关了就重建"的鬼打墙
     $script:PersistentUI = $true
     if ($script:Cfg.Options -and $script:Cfg.Options.MiniBarMode) {

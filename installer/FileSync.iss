@@ -40,11 +40,10 @@ Name: "chs"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式（FileSync）"; GroupDescription: "附加任务："
-Name: "startmenuicon"; Description: "创建开始菜单快捷方式（FileSync）"; GroupDescription: "附加任务："
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\启动-后台.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\FileSync.ico"; Comment: "FileSync 多目标自动同步控制台"; Tasks: startmenuicon
-Name: "{autodesktop}\{#AppName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\启动-后台.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\FileSync.ico"; Comment: "FileSync 多目标自动同步控制台"; Tasks: desktopicon
+Name: "{autoprograms}\{#AppName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\启动-后台.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\FileSync.ico"; Comment: "FileSync 多目标自动同步控制台"; AppUserModelID: "TRG.FileSync.Desktop"
+Name: "{autodesktop}\{#AppName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\启动-后台.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\FileSync.ico"; Comment: "FileSync 多目标自动同步控制台"; Tasks: desktopicon; AppUserModelID: "TRG.FileSync.Desktop"
 
 [Run]
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\启动-后台.vbs"""; WorkingDir: "{app}"; Description: "启动 FileSync（后台运行，浏览器自动打开控制台）"; Flags: nowait postinstall skipifsilent

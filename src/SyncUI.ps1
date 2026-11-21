@@ -36,6 +36,10 @@ $script:UIClosing   = $false
 $script:UIDead      = $false
 $script:LastConsolePct  = -1
 $script:OnExpand    = $null              # 展开时的回调（让调用方补数据）
+$script:OnOpenWeb   = $null              # 点通知时打开网页控制台的回调
+$script:WebPort     = 7788               # 网页控制台端口（监听进程会同步真实值）
+$script:ToastAumid  = 'TRG.FileSync.Desktop'   # 与安装程序里的 AppUserModelID 保持一致
+$script:UserMoved   = $false             # 用户手动拖过窗口：不再自动拽回右下角
 
 # 迷你条的存在感：auto = 有事才出现（默认），always = 常驻，never = 只在托盘
 $script:MiniBarMode   = 'auto'
@@ -367,6 +371,7 @@ $script:Xaml = @'
           BorderBrush="{DynamicResource Line}" BorderThickness="1" Width="448">
     <Grid>
       <!-- ═══════════ 控制台 ═══════════ -->
+      <ScrollViewer x:Name="ConsoleScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <Grid x:Name="ConsoleView">
         <Grid.RowDefinitions>
           <RowDefinition Height="50"/>
@@ -505,8 +510,9 @@ $script:Xaml = @'
           </Grid>
         </Border>
       </Grid>
+      </ScrollViewer>
 
-      <!-- ═══════════ 迷你条 252x44 ═══════════ -->
+      <!-- ═══════════ 迷你条 320x44 ═══════════ -->
       <Grid x:Name="MiniView" Visibility="Collapsed" Height="44" Background="Transparent">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto"/>
@@ -701,6 +707,7 @@ function Hide-Bar {
 function Show-Bar {
     param([switch]$Console)
     $script:UIDismissed = $false
+    $script:UserMoved   = $false      # 叫回来时归位到右下角
     if (-not (Test-UIAlive)) { [void](New-ProgressWindow -Title '监听中' -Compact); return }
     Set-UIMode -Mode $(if ($Console) { 'Console' } else { 'Mini' }) -Quiet
     Set-BarVisible $true -Force
@@ -761,6 +768,21 @@ function Test-UIAlive {
     return $true
 }
 
+function Test-FromButton {
+    <#
+        点击源是不是来自按钮（含里面的图标 Path）。
+        Preview 事件比按钮自身先触发，不往上扒一层就会把"点叉号"
+        也当成"点整条"处理。
+    #>
+    param($Source)
+    $cur = $Source
+    for ($i = 0; $i -lt 10 -and $cur; $i++) {
+        if ($cur -is [System.Windows.Controls.Primitives.ButtonBase]) { return $true }
+        $cur = try { [System.Windows.Media.VisualTreeHelper]::GetParent($cur) } catch { $null }
+    }
+    return $false
+}
+
 function New-ProgressWindow {
     param(
         [string]$Title = 'FileSync',
@@ -781,7 +803,7 @@ function New-ProgressWindow {
         $w = [System.Windows.Markup.XamlReader]::Parse($script:Xaml)
         $n = @{}
         foreach ($name in @(
-            'RootHost','Shell','ConsoleView','MiniView',
+            'RootHost','Shell','ConsoleView','MiniView','ConsoleScroll',
             'Dot','Pill','PillText','BtnCollapse','BtnClose',
             'HeroTitle','HeroPct','HeroDetail','Track','Fill','HeroMeta',
             'V_Disk','V_Files','V_Last','V_Pending',
@@ -823,10 +845,42 @@ function New-ProgressWindow {
         $n.BtnLogs.Add_Click({ try { [void]$script:UIActions.Enqueue('logs') } catch { } })
         $n.BtnBind.Add_Click({ try { [void]$script:UIActions.Enqueue('web') } catch { } })
 
-        # 迷你条整条可点：点一下展开成控制台。叉号是独立的按钮，不会误触。
-        foreach ($el in @($n.MiniText, $n.RingTrack, $n.RingValue, $n.MiniTitle)) {
-            if ($el) { $el.Add_MouseLeftButtonUp({ try { Set-UIMode -Mode 'Console' } catch { } }) }
+        # 迷你条整条可点：点一下看完整信息（系统通知），不再展开成大面板。
+        # 两点经验：
+        #   1) 委托必须存到 $script: 里，PowerShell 的临时委托会被 GC 回收，
+        #      回收后事件就静默失效（点什么都没反应，很难查）；
+        #   2) 挂在窗口的 Preview 上而不是 Grid 上，Grid 的命中测试依赖
+        #      Background，文字之间的空白处经常收不到。
+        # 叉号是 Button，自己吃掉鼠标事件，这里按类型排除。
+        $script:EvMiniClick = [System.Windows.Input.MouseButtonEventHandler]{
+            param($sender, $e)
+            try {
+                if (-not $script:UI) { return }
+                if ($script:UIMode -ne 'Mini') { return }
+                if (Test-FromButton $e.OriginalSource) { return }
+                if (-not $script:UI.Ctl.MiniView.IsMouseOver) { return }
+                Show-StatusToast
+            } catch {
+                try {
+                    $f = Join-Path ([System.IO.Path]::GetTempPath()) 'filesync-toast.log'
+                    [System.IO.File]::AppendAllText($f, ('ERR ' + (Get-Date -Format 'HH:mm:ss') + ' ' + $_.Exception.Message + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
+                } catch { }
+            }
         }
+        $w.AddHandler([System.Windows.UIElement]::PreviewMouseLeftButtonUpEvent, $script:EvMiniClick)
+
+        # 面板可以按住顶部空白处拖动（之前完全不能移动）
+        $script:EvShellDrag = [System.Windows.Input.MouseButtonEventHandler]{
+            param($sender, $e)
+            try {
+                if (-not $script:UI) { return }
+                if ($script:UIMode -eq 'Mini') { return }
+                if (Test-FromButton $e.OriginalSource) { return }
+                $win = $script:UI.Window
+                if ($e.GetPosition($win).Y -le 56) { $win.DragMove(); $script:UserMoved = $true }
+            } catch { }
+        }
+        $w.AddHandler([System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent, $script:EvShellDrag)
 
         # 悬停才让叉号变清楚，平时淡着不抢眼
         $n.MiniView.Add_MouseEnter({ try { $script:UI.Ctl.BtnMiniClose.Opacity = 1 } catch { } })
@@ -1214,6 +1268,13 @@ function Initialize-UITray {
                 [void]$script:UIActions.Enqueue('web')
             } catch { }
         })
+        # 点通知 = 打开网页控制台（通知正文里也这么写）
+        $tray.Add_BalloonTipClicked({
+            try {
+                if ($script:OnOpenWeb) { & $script:OnOpenWeb }
+                else { Start-Process ('http://127.0.0.1:{0}/' -f [int]$script:WebPort) }
+            } catch { }
+        })
         $script:UI.Tray = $tray
     } catch { }
 }
@@ -1291,19 +1352,26 @@ function Set-UIMode {
 
     if ($Mode -eq 'Mini') {
         $c.ConsoleView.Visibility = 'Collapsed'
+        if ($c.ConsoleScroll) { $c.ConsoleScroll.Visibility = 'Collapsed' }
         $c.MiniView.Visibility    = 'Visible'
-        $c.Shell.Width = 264
+        $c.Shell.Width = 320
         $w.SizeToContent = [System.Windows.SizeToContent]::Manual
-        $w.Width  = 264
+        $w.Width  = 320
         $w.Height = 46              # 内容 44 + 上下各 1px 边框
     } else {
         $c.MiniView.Visibility    = 'Collapsed'
         $c.ConsoleView.Visibility = 'Visible'
+        if ($c.ConsoleScroll) { $c.ConsoleScroll.Visibility = 'Visible' }
         $c.Shell.Width = 448
         $w.Width = 448
         # 高度交给 SizeToContent：内容增减时窗口自己伸缩，不用手算，
         # 也就不会出现"问题清单收起来了、窗口还留着一大块空白"。
         $w.SizeToContent = [System.Windows.SizeToContent]::Height
+        # 但不能高过屏幕工作区：超出部分由内部滚动承接，否则底部按钮会被切掉
+        try {
+            $wa = [System.Windows.SystemParameters]::WorkArea
+            $w.MaxHeight = [Math]::Max(320, [Math]::Round($wa.Height - 48))
+        } catch { }
     }
 
     Set-WindowCornerBottom
@@ -1326,6 +1394,7 @@ function Resize-UIShell {
 function Set-WindowCornerBottom {
     if (-not $script:UI) { return }
     if ($script:UIClosing) { return }
+    if ($script:UserMoved) { return }   # 用户拖过窗口，位置以他放的为准
     try {
         $w  = $script:UI.Window
         $wa = [System.Windows.SystemParameters]::WorkArea
@@ -1778,6 +1847,130 @@ function Clear-UICancelRequest { $script:CancelRequested = $false }
 # ═══════════════════════════════════════════════════════════════
 # 提示气泡
 # ═══════════════════════════════════════════════════════════════
+function Show-NativeToast {
+    <#
+        走 Windows 通知中心（ToastGeneric）：应用名显示为 FileSync、带应用图标，
+        点一下按 launch 的 URL 打开网页控制台。失败返回 $false，调用方回退托盘气泡。
+    #>
+    param(
+        [string]$Title = 'FileSync',
+        [string[]]$Lines = @(),
+        [string]$Url = ''
+    )
+    try {
+        [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
+        [void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
+
+        $esc = {
+            param($t)
+            ([string]$t).Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;').Replace('"', '&quot;')
+        }
+        $sb = New-Object System.Text.StringBuilder
+        [void]$sb.Append('<toast duration="long"')
+        if ($Url) { [void]$sb.Append((' activationType="protocol" launch="{0}"' -f (& $esc $Url))) }
+        [void]$sb.Append('><visual><binding template="ToastGeneric">')
+        [void]$sb.Append(('<text>{0}</text>' -f (& $esc $Title)))
+        $n = 0
+        foreach ($ln in @($Lines)) {
+            if (-not $ln) { continue }
+            if ($n -ge 2) { break }          # 标题之外最多两行，多了会被系统裁掉
+            [void]$sb.Append(('<text>{0}</text>' -f (& $esc $ln)))
+            $n++
+        }
+        [void]$sb.Append('</binding></visual></toast>')
+
+        $doc = New-Object Windows.Data.Xml.Dom.XmlDocument
+        $doc.LoadXml($sb.ToString())
+        $toast = New-Object Windows.UI.Notifications.ToastNotification $doc
+        [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($script:ToastAumid).Show($toast)
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Show-StatusToast {
+    <#
+        点迷你条时调用：把条上被省略号截断的内容完整放进系统通知。
+        Windows 10/11 会把托盘气泡并入通知中心，所以这里不需要额外注册。
+    #>
+    param([int]$Seconds = 10)
+    $s = $script:UIState
+    if (-not $s) { return $false }
+
+    $head = [string]$s.Title
+    if (-not $head) {
+        $head = switch ([string]$s.Mode) {
+            'Work'  { '正在同步' }
+            'Done'  { '同步完成' }
+            'Warn'  { '需要注意' }
+            'Error' { '出错了' }
+            default { '监听中' }
+        }
+    }
+    if ([string]$s.Mode -eq 'Work' -and [int]$s.Percent -gt 0) {
+        $head += (' · {0}%' -f [int]$s.Percent)
+    }
+
+    $lines = New-Object System.Collections.ArrayList
+    foreach ($t in @($s.Detail, $s.Hint, $s.Advice)) {
+        if ($t -and ([string]$t).Trim()) { [void]$lines.Add(([string]$t).Trim()) }
+    }
+    $meta = New-Object System.Collections.ArrayList
+    if ($s.DiskLetter) { [void]$meta.Add(('硬盘 ' + [string]$s.DiskLetter)) }
+    if ($s.Files -and [string]$s.Files -ne '—') { [void]$meta.Add(('文件 ' + [string]$s.Files)) }
+    if ($s.Size  -and [string]$s.Size  -ne '—') { [void]$meta.Add([string]$s.Size) }
+    if ($s.LastSync -and [string]$s.LastSync -ne '—') { [void]$meta.Add(('上次 ' + [string]$s.LastSync)) }
+    if ($meta.Count -gt 0) { [void]$lines.Add(($meta -join ' · ')) }
+
+    $cnt = 0
+    try { $cnt = Get-UINoticeCount } catch { }
+    if ($cnt -gt 0) { [void]$lines.Add(('另有 {0} 条待处理提示' -f $cnt)) }
+    [void]$lines.Add('点此通知打开网页控制台')
+
+    $text = ($lines -join "`r`n")
+    if ($text.Length -gt 460) { $text = $text.Substring(0, 460) + '…' }
+    $lvl = switch ([string]$s.Mode) {
+        'Warn'  { 'Warn' }
+        'Error' { 'Error' }
+        default { 'Info' }
+    }
+
+    # 优先走系统通知中心（应用名显示 FileSync，点一下开网页）。
+    # 通知中心不可用（被策略关掉、AUMID 没注册）时回退托盘气泡。
+    $line1 = ''
+    foreach ($t in @($s.Detail, $s.Hint, $s.Advice)) {
+        if ($t -and ([string]$t).Trim()) {
+            if ($line1) { $line1 += ' · ' }
+            $line1 += ([string]$t).Trim()
+        }
+    }
+    $line2 = ''
+    if ($meta.Count -gt 0) { $line2 = ($meta -join ' · ') }
+    if ($cnt -gt 0) { $line2 = $(if ($line2) { $line2 + '　' } else { '' }) + ('另有 {0} 条提示' -f $cnt) }
+    if (-not $line1) { $line1 = $line2; $line2 = '' }
+    if (-not $line2) { $line2 = '点此打开网页控制台' }
+
+    $native = $false
+    try {
+        $url = 'http://127.0.0.1:{0}/' -f [int]$script:WebPort
+        $native = Show-NativeToast -Title ('FileSync · ' + $head) -Lines @($line1, $line2) -Url $url
+    } catch { $native = $false }
+
+    $ok = $native
+    if (-not $native) {
+        $ok = Show-Toast -Title ('FileSync · ' + $head) -Text $text -Level $lvl -Seconds $Seconds
+    }
+
+    # 留个痕迹：点了没反应时能查是"没点到"还是"通知被系统拦了"
+    try {
+        $trace = Join-Path ([System.IO.Path]::GetTempPath()) 'filesync-toast.log'
+        $line = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ok=' + [string]$ok + '  native=' + [string]$native + '  ' + $head + '  ' + ($lines -join ' / ') + "`r`n"
+        [System.IO.File]::AppendAllText($trace, $line, (New-Object System.Text.UTF8Encoding($false)))
+    } catch { }
+    return $ok
+}
+
 function Show-Toast {
     param(
         [string]$Title = 'FileSync',
@@ -1797,12 +1990,9 @@ function Show-Toast {
                 'Error' { [System.Windows.Forms.ToolTipIcon]::Error }
                 default { [System.Windows.Forms.ToolTipIcon]::Info }
             }
+            # 不再在这里等几秒：调用方（点迷你条）在 UI 线程上，
+            # 阻塞会让整个界面卡住，而通知本身由系统托管，不需要等。
             $script:UI.Tray.ShowBalloonTip([Math]::Max(3000, $Seconds * 1000))
-            $deadline = (Get-Date).AddSeconds([Math]::Min($Seconds, 3))
-            while ((Get-Date) -lt $deadline) {
-                Invoke-UIPump
-                Start-Sleep -Milliseconds 80
-            }
             return $true
         } catch { }
     }
