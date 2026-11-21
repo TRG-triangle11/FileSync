@@ -42,6 +42,9 @@ $script:ToastAumid  = 'TRG.FileSync.Desktop'   # 与安装程序里的 AppUserMo
 $script:UserMoved   = $false             # 用户手动拖过窗口：不再自动拽回右下角
 $script:LastToastAt = [DateTime]::MinValue   # 连点去抖
 
+# 迷你条拖动：按下记起点，移动超过阈值才真正拖（否则算点击，弹通知）
+$script:MiniDragged = $false
+
 # 迷你条的存在感：auto = 有事才出现（默认），always = 常驻，never = 只在托盘
 $script:MiniBarMode   = 'auto'
 $script:UIDismissed   = $false           # 用户点了叉：本轮不再自动冒出来
@@ -692,6 +695,49 @@ function Set-BarVisible {
     } catch { }
 }
 
+<#
+    Start-MiniDrag / Update-MiniDrag
+    小条拖动：定时器每 25ms 读一次光标，左键松开就收工。
+    移动超过 4px 才算拖动（此时松手不弹通知）。
+#>
+function Start-MiniDrag {
+    if (-not $script:MiniDragTimer) {
+        $script:MiniDragTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $script:MiniDragTimer.Interval = [TimeSpan]::FromMilliseconds(25)
+        # 委托必须存 $script:，否则会被回收，事件静默失效
+        $script:EvMiniDragTick = [EventHandler]{
+            param($s, $e)
+            try { Update-MiniDrag } catch { }
+        }
+        $script:MiniDragTimer.Add_Tick($script:EvMiniDragTick)
+    }
+    $script:MiniDragTimer.Start()
+}
+
+function Update-MiniDrag {
+    if (-not $script:UI) { return }
+    if (-not $script:MiniDragTimer) { return }
+    if (-not $script:MiniStartCursor) { return }
+    $win = $script:UI.Window
+    $held = (([System.Windows.Forms.Control]::MouseButtons -band [System.Windows.Forms.MouseButtons]::Left) -ne 0)
+    $p  = [System.Windows.Forms.Cursor]::Position
+    $dx = $p.X - $script:MiniStartCursor.X
+    $dy = $p.Y - $script:MiniStartCursor.Y
+    if (([Math]::Abs($dx) + [Math]::Abs($dy)) -ge 4) { $script:MiniDragged = $true }
+    if (-not $held) {
+        $script:MiniDragTimer.Stop()
+        if ($script:MiniDragged) {
+            $script:UserMoved = $true
+        }
+        return
+    }
+    if (-not $script:MiniDragged) { return }
+    $sx = if ($script:MiniScaleX -gt 0) { $script:MiniScaleX } else { 1 }
+    $sy = if ($script:MiniScaleY -gt 0) { $script:MiniScaleY } else { 1 }
+    $win.Left = $script:MiniStartLeft + ($dx / $sx)
+    $win.Top  = $script:MiniStartTop  + ($dy / $sy)
+}
+
 function Set-MiniBarMode {
     param([string]$Mode)
     if (@('auto', 'always', 'never') -contains $Mode) { $script:MiniBarMode = $Mode }
@@ -709,7 +755,7 @@ function Hide-Bar {
 function Show-Bar {
     param([switch]$Console)
     $script:UIDismissed = $false
-    $script:UserMoved   = $false      # 叫回来时归位到右下角
+    # 拖过就一直在用户放的位置；没拖过才回右下角（Set-WindowCornerBottom 里判断）
     if (-not (Test-UIAlive)) { [void](New-ProgressWindow -Title '监听中' -Compact); return }
     Set-UIMode -Mode $(if ($Console) { 'Console' } else { 'Mini' }) -Quiet
     Set-BarVisible $true -Force
@@ -861,6 +907,15 @@ function New-ProgressWindow {
                 if ($script:UIMode -ne 'Mini') { return }
                 if (Test-FromButton $e.OriginalSource) { return }
                 if (-not $script:UI.Ctl.MiniView.IsMouseOver) { return }
+                # 刚才是在拖位置，不是点击：不弹通知
+                if ($script:MiniDragged) {
+                    # 拖过就以用户放的位置为准，别再被拽回右下角
+                    $script:MiniDragged = $false
+                    $script:MiniStartCursor = $null
+                    $script:UserMoved = $true
+                    return
+                }
+                $script:MiniStartCursor = $null
                 # 连点/双击会重复触发，700ms 内只认一次
                 $now = [DateTime]::Now
                 if (($now - $script:LastToastAt).TotalMilliseconds -lt 700) { return }
@@ -874,6 +929,38 @@ function New-ProgressWindow {
             }
         }
         $w.AddHandler([System.Windows.UIElement]::PreviewMouseLeftButtonUpEvent, $script:EvMiniClick)
+
+        # 迷你条按住就能拖走。之前它被固定钉在右下角（一移动就被拽回来），
+        # 这里两个条件：移动超过 4px 才算拖；只按一下松手仍然算点击（弹通知）。
+        # 小条拖动：按下后启动一个 25ms 的定时器，自己盯着光标与左键状态移动窗口。
+        # 为什么不用 DragMove：实测这个窗口在按住拖动的过程中收不到 MouseMove
+        # （日志里按下之后一条 move 都没有），DragMove 因此永远不启动。
+        $script:EvMiniDown = [System.Windows.Input.MouseButtonEventHandler]{
+            param($sender, $e)
+            try {
+                if (-not $script:UI) { return }
+                if ($script:UIMode -ne 'Mini') { return }
+                if (Test-FromButton $e.OriginalSource) { return }
+                if (-not $script:UI.Ctl.MiniView.IsMouseOver) { return }
+                $win = $script:UI.Window
+                $script:MiniDragged = $false
+                $script:MiniStartCursor = [System.Windows.Forms.Cursor]::Position
+                $script:MiniStartLeft   = $win.Left
+                $script:MiniStartTop    = $win.Top
+                # 窗口坐标是 DIP、光标是物理像素，缩放比要换算
+                $script:MiniScaleX = 1; $script:MiniScaleY = 1
+                try {
+                    $psrc = [System.Windows.PresentationSource]::FromVisual($win)
+                    if ($psrc -and $psrc.CompositionTarget) {
+                        $tr = $psrc.CompositionTarget.TransformToDevice
+                        if ($tr.M11 -gt 0) { $script:MiniScaleX = $tr.M11 }
+                        if ($tr.M22 -gt 0) { $script:MiniScaleY = $tr.M22 }
+                    }
+                } catch { }
+                Start-MiniDrag
+            } catch { }
+        }
+        $w.AddHandler([System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent, $script:EvMiniDown)
 
         # 面板可以按住顶部空白处拖动（之前完全不能移动）
         $script:EvShellDrag = [System.Windows.Input.MouseButtonEventHandler]{
@@ -1400,12 +1487,19 @@ function Resize-UIShell {
 function Set-WindowCornerBottom {
     if (-not $script:UI) { return }
     if ($script:UIClosing) { return }
-    if ($script:UserMoved) { return }   # 用户拖过窗口，位置以他放的为准
     try {
         $w  = $script:UI.Window
         $wa = [System.Windows.SystemParameters]::WorkArea
         $cw = if ($w.ActualWidth  -gt 0) { $w.ActualWidth }  else { $w.Width }
         $ch = if ($w.ActualHeight -gt 0) { $w.ActualHeight } else { $w.Height }
+        if ($script:UserMoved) {
+            # 用户拖过：位置以他放的为准，只保证窗口不跑出屏幕
+            $left = [Math]::Min([Math]::Max($wa.Left + 8, $w.Left), $wa.Right  - $cw - 8)
+            $top  = [Math]::Min([Math]::Max($wa.Top  + 8, $w.Top),  $wa.Bottom - $ch - 8)
+            $w.Left = [Math]::Round($left)
+            $w.Top  = [Math]::Round($top)
+            return
+        }
         $w.Left = [Math]::Round($wa.Right  - $cw - 16)
         $w.Top  = [Math]::Round($wa.Bottom - $ch - 16)
     } catch { }

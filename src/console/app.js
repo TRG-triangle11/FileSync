@@ -197,9 +197,16 @@ function renderOverview(d) {
   $('heroDetail').textContent = s.detail || '';
 
   // ── 环形进度 ──
+  // 空闲但已经同步过 → 显示绿色 100%：一眼看出"备份是完整的"，
+  // 而不是一条灰杠让人以为还在等。
   const pct = Math.max(0, Math.min(100, Number(s.percent) || 0));
-  const showRing = !!(s.syncing || pct > 0 || mode === 'done' || mode === 'warn');
-  const ringPct = mode === 'done' ? 100 : pct;
+  const hasSynced = mode === 'done' || !!s.lastSyncAt
+    || (!!s.lastSync && s.lastSync !== '—' && s.lastSync !== '还没同步过');
+  const idleDone = mode === 'idle' && !s.syncing && hasSynced && isBound;
+  hero.dataset.idleDone = idleDone ? '1' : '0';
+
+  const showRing = !!(s.syncing || pct > 0 || mode === 'done' || mode === 'warn' || idleDone);
+  const ringPct = (mode === 'done' || idleDone) ? 100 : pct;
   const ring = $('ringValue');
   ring.style.strokeDasharray = showRing
     ? `${(RING_CIRC * ringPct / 100).toFixed(1)} ${RING_CIRC}`

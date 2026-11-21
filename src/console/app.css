@@ -324,6 +324,9 @@ b { font-weight: 500; }
 .hero[data-mode="warn"] { --ring-color: var(--warn); }
 .hero[data-mode="err"]  { --ring-color: var(--err); }
 .hero[data-mode="idle"] { --ring-color: var(--line-2); }
+/* 空闲但上次同步已完成：环走满、用成功色，别留一条灰杠 */
+.hero[data-mode="idle"][data-idle-done="1"] { --ring-color: var(--ok); }
+.hero[data-mode="idle"][data-idle-done="1"] .ring-center b { color: var(--ok); }
 
 .ring-center {
   position: absolute; inset: 0;
