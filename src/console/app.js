@@ -609,7 +609,13 @@ async function fetchDisks(force) {
 
 function destText(d) {
   if (d.kind === 'folder') return d.path || d.label || '';
-  return cleanDiskLabel(d.label || '移动硬盘') + (d.sub ? ' \\ ' + d.sub : '');
+  // 硬盘目的地只报盘符：型号 + 容量（"SanDisk SSD PLUS 480GB 447.1 GB"）
+  // 太长，一行放不下，用户认的是「哪个盘」。盘符由服务端按序列号实时解析；
+  // 老版本服务端只给 label 时，从 label 里的 "(F:)" 兜底解析。
+  const fromLabel = /\(([A-Za-z]):\)/.exec(d.label || '');
+  const letter = d.letter || (fromLabel ? fromLabel[1] : '');
+  const head = letter ? letter + ':' : '移动硬盘';
+  return head + (d.sub ? ' \\ ' + d.sub : '');
 }
 
 /* 硬盘标签里带着盘符（如 "SanDisk ... (F:) 447.1 GB"），界面上只留型号与容量 */
@@ -1047,6 +1053,12 @@ function bindEvents() {
 
     const l = ev.target.closest('[data-log]');
     if (l) { openLog(l.dataset.log); return; }
+
+    // data-goto = 跳到某个页面（纯前端）；data-open = 让服务端打开资源管理器
+    // 之前「去设置」误用了 data-open，服务端不认识 settings，就回了句
+    // 「这个文件夹当前不存在（硬盘可能没插）」，看着像硬盘出问题。
+    const g = ev.target.closest('[data-goto]');
+    if (g) { switchPage(g.dataset.goto); return; }
 
     const o = ev.target.closest('[data-open]');
     if (o) { doOpen(o.dataset.open); return; }

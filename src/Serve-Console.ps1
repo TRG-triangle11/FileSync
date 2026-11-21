@@ -461,9 +461,10 @@ function Get-TasksStateJson {
     [void]$sb.Append('[')
     try {
         $pairs = Get-SyncPairs -Config $Cfg
-        $ti = 0
-        $first = $true
-        foreach ($t in @($Cfg.Tasks)) {
+            $ti = 0
+            $first = $true
+            $vols = $null
+            foreach ($t in @($Cfg.Tasks)) {
             if (-not $first) { [void]$sb.Append(',') }
             $first = $false
             [void]$sb.Append('{"name":').Append((ConvertTo-JsonStr ([string]$t.Name)))
@@ -502,8 +503,23 @@ function Get-TasksStateJson {
                     if (-not $lbl) { $lbl = '移动硬盘' }
                     $ser = ''
                     if ($d.Serials) { $ser = [string]$d.Serials.Disk }
+                    # 盘符不写死：按序列号找到当前挂载的卷，取它此刻的盘符。
+                    # 前端同步任务只显示「F: \ 子目录」，型号容量留给「硬盘」页。
+                    $letter = ''
+                    if ($online -and $d.Serials) {
+                        if ($null -eq $vols) { $vols = @(Get-VolumeList) }
+                        $wantDisk   = ([string]$d.Serials.Disk).Trim().ToUpper()
+                        $wantPhys   = ([string]$d.Serials.Phys).Trim().ToUpper()
+                        $wantVolume = ([string]$d.Serials.Volume).Trim().ToUpper()
+                        foreach ($v in $vols) {
+                            if ($wantDisk   -and ([string]$v.DiskSerial).Trim().ToUpper()   -eq $wantDisk)   { $letter = [string]$v.Letter; break }
+                            if ($wantPhys   -and ([string]$v.PhysSerial).Trim().ToUpper()   -eq $wantPhys)   { $letter = [string]$v.Letter; break }
+                            if ($wantVolume -and ([string]$v.VolumeSerial).Trim().ToUpper() -eq $wantVolume) { $letter = [string]$v.Letter; break }
+                        }
+                    }
                     [void]$sb.Append('{"kind":"disk"')
                     [void]$sb.Append(',"label":').Append((ConvertTo-JsonStr $lbl))
+                    [void]$sb.Append(',"letter":').Append((ConvertTo-JsonStr $letter))
                     [void]$sb.Append(',"path":""')
                     [void]$sb.Append(',"sub":').Append((ConvertTo-JsonStr ([string]$d.Sub)))
                     [void]$sb.Append(',"serial":').Append((ConvertTo-JsonStr $ser))
@@ -1118,12 +1134,19 @@ function Invoke-Api {
             }
             'target' { $target = (Get-DiskSnapshot).Folder }
             'root'   { $target = $here }
+            default  { Send-Json $Context ('{"ok":false,"message":' + (ConvertTo-JsonStr ('不支持的打开目标：' + $what)) + '}') 400; return }
         }
         if ($target -and (Test-Path -LiteralPath $target)) {
             try { Start-Process explorer.exe -ArgumentList ('"' + $target + '"') } catch { }
             Send-Json $Context '{"ok":true}'
         } else {
-            Send-Json $Context ('{"ok":false,"message":' + (ConvertTo-JsonStr '这个文件夹当前不存在（硬盘可能没插）') + '}')
+            # 提示要说到点子上：源目录是本机的，跟"硬盘没插"没关系
+            $msg = switch ($what) {
+                'source' { '源文件夹不存在或暂时打不开：' + $target }
+                'target' { '目的地文件夹还不存在（硬盘可能没插，或还没同步过）' }
+                default  { '文件夹不存在：' + $target }
+            }
+            Send-Json $Context ('{"ok":false,"message":' + (ConvertTo-JsonStr $msg) + '}')
         }
         return
     }
