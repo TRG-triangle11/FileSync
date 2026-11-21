@@ -91,8 +91,44 @@ $uiOn = -not $NoWindow -and -not $Headless
 if ($uiOn -and $script:Cfg.Options -and $script:Cfg.Options.ShowProgressWindow -eq $false) { $uiOn = $false }
 
 function Update-FooterText {
-    if ($script:Paused) { return '监听已暂停 · 网页里可以恢复' }
-    return ('监听中 · 每 {0} 秒检查一次' -f $script:Interval)
+    if ($script:Paused) { return '自动同步已暂停 · 网页里可以恢复' }
+    return ('自动同步已开启 · 每 {0} 秒检查一次' -f $script:Interval)
+}
+
+<#
+    待机时该说什么。
+    "监听中" 只是程序状态，用户关心的是"我的文件备份好了没"：
+    上次同步过就说「已同步完成」，从没同步过才说「等待硬盘」。
+#>
+function Get-StandbyText {
+    param([bool]$Present = $false, [int]$PairCount = -1)
+    if ($PairCount -lt 0) {
+        try { $PairCount = @(Get-SyncPairs -Config $script:Cfg).Count } catch { $PairCount = 0 }
+    }
+    if ($PairCount -le 0) {
+        return @{ Title = '还没有同步任务'; Detail = '到「设置 → 同步任务」里添加源目录和目的地' }
+    }
+    $last = [string]$script:UIState.LastSync
+    $hasSynced = $last -and $last -ne '—' -and $last -ne '还没同步过'
+    if ($hasSynced) {
+        if ($Present) { return @{ Title = '已同步完成'; Detail = '内容有变化会自动同步' } }
+        return @{ Title = '已同步完成'; Detail = '硬盘已拔出 · 插上会自动同步' }
+    }
+    return @{ Title = '等待硬盘'; Detail = '插上硬盘后会自动同步' }
+}
+
+# 重启后先把上次的状态捞回来：不然页面会短暂显示"从没同步过"，
+# 待机文案也判不出"已同步完成"
+function Import-PreviousStatus {
+    try {
+        if (-not (Test-Path -LiteralPath $script:StatusFile)) { return }
+        $prev = Get-Content -LiteralPath $script:StatusFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if (-not $prev) { return }
+        if ($prev.lastSync -and [string]$prev.lastSync -ne '—') { $script:UIState.LastSync = [string]$prev.lastSync }
+        if ($prev.files -and [string]$prev.files -ne '—')       { $script:UIState.Files    = [string]$prev.files }
+        if ($prev.size  -and [string]$prev.size  -ne '—')       { $script:UIState.Size     = [string]$prev.size }
+        if ($prev.lastSyncAt) { $script:UIRuntime.LastSyncAt = [string]$prev.lastSyncAt }
+    } catch { }
 }
 
 function Publish-BindInfo {
@@ -122,7 +158,8 @@ function Initialize-WatchUI {
 
     if (-not (Test-UIAlive)) { [void](New-ProgressWindow -Title '监听中' -Compact) }
     if (-not $script:UIState.Syncing) {
-        Update-ProgressUI -Title '监听中' -Detail '插上硬盘后会自动同步' -Hint '' -Percent 0 -State 'Idle'
+        $sb = Get-StandbyText -Present ([bool]$script:UIState.Connected)
+        Update-ProgressUI -Title $sb.Title -Detail $sb.Detail -Hint '' -Percent 0 -State 'Idle'
     }
 }
 
@@ -138,7 +175,8 @@ function Set-PausedState {
     if ($Value) {
         Update-ProgressUI -Title '已暂停' -Detail '插盘不再自动同步' -Hint '在网页控制台里可以恢复' -Percent 0 -State 'Idle'
     } else {
-        Update-ProgressUI -Title '监听中' -Detail '插上硬盘后会自动同步' -Hint '' -Percent 0 -State 'Idle'
+        $sb = Get-StandbyText -Present ([bool]$script:UIState.Connected)
+        Update-ProgressUI -Title $sb.Title -Detail $sb.Detail -Hint '' -Percent 0 -State 'Idle'
     }
     Set-UIRuntime -Key 'Paused' -Value $Value
 }
@@ -303,6 +341,7 @@ function Wait-Tick {
 function Wait-Pump { param([int]$Seconds) Wait-Tick $Seconds }
 
 Publish-BindInfo | Out-Null
+Import-PreviousStatus
 Initialize-WatchUI
 Save-UIStatus -Force
 
@@ -356,8 +395,22 @@ while ($true) {
         $present = ($pairs.Count -gt 0) -and ($diskOnline -or $folderOnline)
 
         Set-UIStatus -Connected $present -Footer (Update-FooterText)
-        if ($uiOn -and -not $present -and -not $script:UIState.Syncing) {
-            Update-ProgressUI -Title '监听中' -Detail $(if ($pairs.Count -eq 0) { '还没配置同步任务' } else { '等目的地就绪' }) -Hint '' -Percent 0 -State 'Idle'
+        # 空闲时不要停在"监听中"：直接告诉用户上次同步的结果
+        # 完成态先留 6 秒（让人看到这次同步了什么），然后回落到"已同步完成"
+        # 「部分完成 / 需要处理」不动，那是真要让用户看的
+        if ($uiOn -and -not $script:Paused -and -not $script:UIState.Syncing) {
+            $m = [string]$script:UIState.Mode
+            $settle = $false
+            if ($m -eq 'Idle') {
+                $settle = $true
+            } elseif ($m -eq 'Done') {
+                if (-not $script:HideAt) { $settle = $true }
+                elseif ((Get-Date) -ge [datetime]$script:HideAt) { $settle = $true }
+            }
+            if ($settle) {
+                $sb = Get-StandbyText -Present $present -PairCount $pairs.Count
+                Update-ProgressUI -Title $sb.Title -Detail $sb.Detail -Hint '' -Percent 0 -State 'Idle'
+            }
         }
         Save-UIStatus -MinIntervalMs 500
 

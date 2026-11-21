@@ -205,9 +205,10 @@ function renderOverview(d) {
     ? `${(RING_CIRC * ringPct / 100).toFixed(1)} ${RING_CIRC}`
     : `0 ${RING_CIRC}`;
   const numTxt = showRing ? String(ringPct) : '—';
-  $('ringNum').textContent = numTxt;
+  // 百分号和数字同一行：之前单位是另一个块级元素，会掉到数字下面去
   $('ringNum').dataset.len = numTxt.length;
-  $('ringUnit').textContent = showRing ? '%' : '';
+  $('ringNum').innerHTML = showRing ? numTxt + '<i>%</i>' : '—';
+  $('ringUnit').textContent = '';
 
   // ── 胶囊标签：速度 / 剩余 / 提示 ──
   const chips = [];
@@ -246,7 +247,7 @@ function renderOverview(d) {
   // ── 指标 ──
   const disk = d.disk || {};
   $('mDisk').textContent = disk.present
-    ? `${disk.letter || ''} ${disk.label || '移动硬盘'}`.trim()
+    ? (cleanDiskLabel(disk.label) || '移动硬盘')
     : '未连接';
   $('mDiskSub').textContent = disk.present
     ? `${disk.freeGB} GB 可用 / 共 ${disk.totalGB} GB`
@@ -260,7 +261,7 @@ function renderOverview(d) {
 
   $('mSize').textContent = s.size && s.size !== '—' ? s.size : '—';
   $('mFilesSub').textContent = s.files && s.files !== '—'
-    ? `${s.files.replace(/个$/, '')} 个文件`
+    ? `${String(s.files).replace(/\s*个$/, '')} 个文件`
     : (s.syncing ? '正在统计…' : '还没比对过');
 
   const at = s.lastSyncAt ? new Date(s.lastSyncAt) : null;
@@ -288,7 +289,7 @@ function renderOverview(d) {
   else if (s.paused)   { sideT = '已暂停';     sideS = '插盘不自动同步'; }
   else if (s.syncing)  { sideT = '正在同步';   sideS = pct + '% · 别拔盘'; }
   else if (!isBound)   { sideT = '未绑定';     sideS = '到硬盘页选一块'; }
-  else if (s.connected) { sideT = '已连接';    sideS = disk.present ? `${disk.letter}: 就绪` : '硬盘在线'; }
+  else if (s.connected) { sideT = '已连接';    sideS = disk.present ? '硬盘就绪' : '硬盘在线'; }
   else                 { sideT = '等待硬盘';   sideS = '插上后自动开始'; }
   $('sideStateT').textContent = sideT;
   $('sideStateS').textContent = sideS;
@@ -297,7 +298,7 @@ function renderOverview(d) {
   $('sbPort').textContent = '127.0.0.1:' + (srv.port || '—');
 
   // ── 绑定卡 ──
-  $('bindName').textContent = isBound ? (d.bind.name || '已绑定') : '尚未绑定';
+  $('bindName').textContent = isBound ? (cleanDiskLabel(d.bind.name) || '已绑定') : '尚未绑定';
   $('bindMeta').textContent = isBound
     ? (d.bind.serial ? '序列号 ' + d.bind.serial : '按硬件序列号识别') +
       (d.bind.boundAt ? ' · ' + d.bind.boundAt : '')
@@ -601,7 +602,12 @@ async function fetchDisks(force) {
 
 function destText(d) {
   if (d.kind === 'folder') return d.path || d.label || '';
-  return (d.label || '移动硬盘') + (d.sub ? ' \\ ' + d.sub : '');
+  return cleanDiskLabel(d.label || '移动硬盘') + (d.sub ? ' \\ ' + d.sub : '');
+}
+
+/* 硬盘标签里带着盘符（如 "SanDisk ... (F:) 447.1 GB"），界面上只留型号与容量 */
+function cleanDiskLabel(s) {
+  return String(s || '').replace(/\s*\([A-Za-z]:\)/g, '').replace(/\s{2,}/g, ' ').trim();
 }
 
 function destDataset(d) {

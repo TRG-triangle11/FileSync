@@ -1948,7 +1948,7 @@ function Show-StatusToast {
         if (-not $line1) { $line1 = $head }
         $line2 = [string]$s.HintLine
         if (-not $line2) {
-            if ($total -and $s.DiskLetter) { $line2 = ('硬盘 {0} · 总容量 {1}' -f $s.DiskLetter, $total) }
+            if ($total) { $line2 = ('总容量 ' + $total) }
         }
     }
     if (-not $line2) { $line2 = '点此打开网页控制台' }
@@ -1960,7 +1960,6 @@ function Show-StatusToast {
         if ($t -and ([string]$t).Trim()) { [void]$long.Add(([string]$t).Trim()) }
     }
     $meta = New-Object System.Collections.ArrayList
-    if ($s.DiskLetter) { [void]$meta.Add(('硬盘 ' + [string]$s.DiskLetter)) }
     if ($total) { [void]$meta.Add(('总容量 ' + $total)) }
     if ($s.LastSync -and [string]$s.LastSync -ne '—') { [void]$meta.Add(('上次 ' + [string]$s.LastSync)) }
     if ($meta.Count -gt 0) { [void]$long.Add(($meta -join ' · ')) }

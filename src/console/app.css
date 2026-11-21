@@ -333,13 +333,23 @@ b { font-weight: 500; }
   pointer-events: none;
 }
 .ring-center b[data-len="1"] { font-size: 44px; }
-.ring-center b[data-len="3"] { font-size: 31px; }
+.ring-center b[data-len="3"] { font-size: 29px; }
+.ring-center b[data-len="3"] i { font-size: 13px; }
 .ring-center b {
   font-size: 38px; font-weight: 500;
   line-height: 1;
   letter-spacing: -.03em;
   font-variant-numeric: tabular-nums;
   color: var(--t1);
+}
+/* 百分号跟着数字走（同一行、基线对齐），不再掉到下一行 */
+.ring-center b i {
+  font-style: normal;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0;
+  margin-left: 2px;
+  opacity: .55;
 }
 .ring-center span { font-size: 13px; color: var(--t3); line-height: 1; margin-top: 3px; }
 .hero[data-mode="done"] .ring-center b { color: var(--ok); }
