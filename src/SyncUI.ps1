@@ -525,7 +525,8 @@ $script:Xaml = @'
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
-        <!-- 环形进度：26 的框放 23.5 的圈，留出线宽，不被裁掉 -->
+        <!-- 环形进度：26 的框放 23.5 的圈，留出线宽，不被裁掉。
+             同步完成后换成绿勾 —— 备份到位就不必再画一个空圈。 -->
         <Grid Grid.Column="0" Width="26" Height="26" Margin="13,0,0,0" VerticalAlignment="Center">
           <Ellipse x:Name="RingTrack" Width="23.5" Height="23.5"
                    Stroke="{DynamicResource RingTrack}" StrokeThickness="2.5"/>
@@ -537,6 +538,10 @@ $script:Xaml = @'
               <RotateTransform Angle="-90"/>
             </Ellipse.RenderTransform>
           </Ellipse>
+          <Path x:Name="MiniCheck" Data="M7,13.4 L11.2,17.6 L19.6,9.2"
+                Stroke="{DynamicResource Ok}" StrokeThickness="2.3"
+                StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                Visibility="Collapsed"/>
         </Grid>
 
         <Grid x:Name="MiniText" Grid.Column="1" Margin="9,0,6,0" VerticalAlignment="Center">
@@ -858,7 +863,7 @@ function New-ProgressWindow {
             'IssueCard','IssueHead','IssueIcon','IssueScroll','IssueItems','IssueAdvice',
             'BtnSync','BtnLogs','BtnBind',
             'FootDot','FootText','FootTime','FootBar',
-            'RingTrack','RingValue','MiniTitle','MiniPct','MiniMeta','MiniText',
+            'RingTrack','RingValue','MiniCheck','MiniTitle','MiniPct','MiniMeta','MiniText',
             'MiniBadge','MiniBadgeText','BtnMiniClose')) {
             $n[$name] = $w.FindName($name)
         }
@@ -1598,9 +1603,29 @@ function Update-UISurface {
         $c.FootDot.Background = ConvertTo-Brush $(if ($s.Footer -match '监听') { $script:C.Ok } else { $script:C.Idle })
 
         # ---- 迷你条 ----
-        $c.RingValue.Stroke = ConvertTo-Brush $accent
+        # 左边这个图形只回答一个问题：文件备份到位了没。
+        #   同步完 / 上次已同步 → 绿勾（不再画空圈，空圈看着像"还在等"）
+        #   正在同步           → 环形进度
+        #   异常               → 环（颜色跟着变红/黄）
+        $miniDone = ($s.Mode -eq 'Done') -or
+                    ($s.Mode -eq 'Idle' -and $s.LastSync -and
+                     [string]$s.LastSync -ne '—' -and [string]$s.LastSync -ne '还没同步过')
+        if ($miniDone -and @($script:Notifications | Where-Object { $_.Level -eq 'Error' }).Count -gt 0) {
+            $miniDone = $false      # 有错就别急着打勾
+        }
+
         $c.RingTrack.Stroke = ConvertTo-Brush $script:C.RingTrack
-        Set-RingValue $c.RingValue $pctShown
+        if ($miniDone) {
+            $c.MiniCheck.Stroke = ConvertTo-Brush $script:C.Ok
+            $c.MiniCheck.Visibility = 'Visible'
+            $c.RingTrack.Visibility = 'Collapsed'
+            $c.RingValue.Visibility = 'Collapsed'
+        } else {
+            $c.MiniCheck.Visibility = 'Collapsed'
+            $c.RingTrack.Visibility = 'Visible'
+            $c.RingValue.Stroke = ConvertTo-Brush $accent
+            Set-RingValue $c.RingValue $pctShown
+        }
 
         $c.MiniTitle.Text     = $s.Title
         $c.MiniTitle.Foreground = ConvertTo-Brush $script:C.Txt1
