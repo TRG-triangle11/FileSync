@@ -374,15 +374,22 @@ function Save-HardwareBinding {
     }
 
     $display = '{0} ({1}:) {2:N1} GB' -f $pick.Model, $pickVol.Letter, $pick.SizeGB
+    # ConvertTo-JsonStr 已经返回带引号的 JSON 字符串，外面不能再套引号，
+    # 否则会写成 ""xxx"" 这种非法 JSON，整个状态接口都会解析失败。
+    $serSerial  = ([string]$pick.Serial).Trim()
+    $physSerial = ([string]$pick.PhysSerial).Trim()
+    $volSerial  = ([string]$pickVol.VolSerial).Trim()
+    $volLabel   = [string]$pickVol.Label
+    $boundAt    = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
     $json = @"
 {
-  "DiskSerialNumber": "$(ConvertTo-JsonStr $pick.Serial.Trim())",
-  "PhysicalDiskSerialNumber": "$(ConvertTo-JsonStr $pick.PhysSerial.Trim())",
-  "VolumeSerialNumber": "$(ConvertTo-JsonStr $pickVol.VolSerial.Trim())",
-  "VolumeLabel": "$(ConvertTo-JsonStr $pickVol.Label)",
+  "DiskSerialNumber": $(ConvertTo-JsonStr $serSerial),
+  "PhysicalDiskSerialNumber": $(ConvertTo-JsonStr $physSerial),
+  "VolumeSerialNumber": $(ConvertTo-JsonStr $volSerial),
+  "VolumeLabel": $(ConvertTo-JsonStr $volLabel),
   "DiskSizeBytes": $([long]([double]$pick.SizeGB * 1GB)),
-  "BoundAt": "$(ConvertTo-JsonStr (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))",
-  "BoundDisplayName": "$(ConvertTo-JsonStr $display)"
+  "BoundAt": $(ConvertTo-JsonStr $boundAt),
+  "BoundDisplayName": $(ConvertTo-JsonStr $display)
 }
 "@
     try {

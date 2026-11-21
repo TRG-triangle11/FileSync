@@ -200,10 +200,17 @@ function Test-DestAvailable {
 
 function Get-HardwareInfo {
     param([string]$Path = $script:HwPath)
-    if (-not (Test-Path -LiteralPath $Path)) { return $null }
-    $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
-    if (-not $raw) { return $null }
-    return ($raw | ConvertFrom-Json)
+    try {
+        if (-not (Test-Path -LiteralPath $Path)) { return $null }
+        $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+        if (-not $raw) { return $null }
+        return ($raw | ConvertFrom-Json)
+    } catch {
+        # hardware.json 损坏时不能让整条状态接口崩掉：退化为「未绑定」，
+        # 用户重新绑一次即可自动覆盖修复。
+        try { Write-Log ('hardware.json 解析失败，按未绑定处理：' + $_.Exception.Message) -Level WARN } catch { }
+        return $null
+    }
 }
 
 function Test-HardwareBound {
@@ -277,6 +284,16 @@ function Resolve-TargetDrive {
     # Hardware 覆盖：多目标模式下每个目的地带自己的序列号三要素；
     # 不传则回退到 hardware.json（单绑定兼容）
     $hw = if ($Hardware) { $Hardware } else { Get-HardwareInfo }
+    # 两种形状都要吃：hardware.json 是 DiskSerialNumber/PhysicalDiskSerialNumber/VolumeSerialNumber，
+    # 而配置里的目的地是 Disk/Phys/Volume。不统一就会被判成「没绑序列号」。
+    if ($hw -and -not $hw.PSObject.Properties['DiskSerialNumber']) {
+        $hw = [pscustomobject]@{
+            DiskSerialNumber         = [string]$hw.Disk
+            PhysicalDiskSerialNumber = [string]$hw.Phys
+            VolumeSerialNumber       = [string]$hw.Volume
+            BoundDisplayName         = [string]$hw.Label
+        }
+    }
     if (-not (Test-HardwareBound $hw)) {
         return [pscustomobject]@{
             Ok      = $false
