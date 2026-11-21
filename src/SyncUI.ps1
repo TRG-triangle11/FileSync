@@ -1900,8 +1900,10 @@ function Show-NativeToast {
 function Show-StatusToast {
     <#
         点迷你条时调用：把条上被省略号截断的内容完整放进系统通知。
-        内容按状态区分：进行中给「在做什么 + 预计用时 + 拔盘提示」，
-        完成后给「这次同步了什么 + 总容量」。标题不重复应用名（通知卡片已显示 FileSync）。
+        排版固定三行：
+          完成 → 标题「同步完成」/ 第一行这次同步了什么 / 第二行总文件容量
+          进行 → 标题「正在落盘 · 22%」/ 第一行「预计几秒 · 当前动作」/ 第二行拔盘提示
+        标题不重复应用名（通知卡片已显示 FileSync）。
     #>
     param([int]$Seconds = 10)
     $s = $script:UIState
@@ -1915,7 +1917,7 @@ function Show-StatusToast {
             'Done'  { '同步完成' }
             'Warn'  { '需要注意' }
             'Error' { '出错了' }
-            default { '监听中' }
+            default { '已同步完成' }
         }
     }
     if ($mode -eq 'Work' -and [int]$s.Percent -gt 0) { $head += (' · {0}%' -f [int]$s.Percent) }
@@ -1934,22 +1936,37 @@ function Show-StatusToast {
             $d = [string]$s.Detail
             if ($d) { $line1 = ($d -split ' · ')[0] } else { $line1 = '同步完成' }
         }
-        if ($total) { $line2 = ('总容量 ' + $total) }
+        if ($total) { $line2 = ('总文件 ' + $total) }
     } elseif ($mode -eq 'Warn' -or $mode -eq 'Error') {
         $line1 = [string]$s.Detail
         if (-not $line1) { $line1 = $head }
         $hint = [string]$s.HintLine
         if (-not $hint) { $hint = [string]$s.Advice }
         if ($hint) { $line2 = $hint }
-        elseif ($total) { $line2 = ('总容量 ' + $total) }
+        elseif ($total) { $line2 = ('总文件 ' + $total) }
     } else {
-        # 进行中 / 待命：当前动作 + 预计用时与拔盘提示
-        $line1 = [string]$s.Detail
-        if (-not $line1) { $line1 = $head }
-        $line2 = [string]$s.HintLine
-        if (-not $line2) {
-            if ($total) { $line2 = ('总容量 ' + $total) }
+        # 进行中 / 待命：第一行「预计用时 · 当前动作」，第二行单独放拔盘提示
+        # 引擎给的提示是「预计几秒 · 同步中请勿拔盘…」，这里按"拔盘"那句切开重排
+        $detail = [string]$s.Detail
+        $hint   = [string]$s.HintLine
+        $eta    = ''
+        $safety = ''
+        if ($hint) {
+            $cut = $hint.IndexOf('同步中请勿拔盘')
+            if ($cut -lt 0) { $cut = $hint.IndexOf('请先「安全删除硬件」') }
+            if ($cut -ge 0) {
+                $eta    = $hint.Substring(0, $cut).Trim().TrimEnd([char]0x00B7).Trim()
+                $safety = $hint.Substring($cut).Trim()
+            } else {
+                $eta = $hint.Trim()
+            }
         }
+        if ($eta -and $detail) { $line1 = $eta + ' · ' + $detail }
+        elseif ($eta)          { $line1 = $eta }
+        else                   { $line1 = $detail }
+        if (-not $line1) { $line1 = $head }
+        $line2 = $safety
+        if (-not $line2 -and $total) { $line2 = ('总文件 ' + $total) }
     }
     if (-not $line2) { $line2 = '点此打开网页控制台' }
 
@@ -1960,7 +1977,7 @@ function Show-StatusToast {
         if ($t -and ([string]$t).Trim()) { [void]$long.Add(([string]$t).Trim()) }
     }
     $meta = New-Object System.Collections.ArrayList
-    if ($total) { [void]$meta.Add(('总容量 ' + $total)) }
+    if ($total) { [void]$meta.Add(('总文件 ' + $total)) }
     if ($s.LastSync -and [string]$s.LastSync -ne '—') { [void]$meta.Add(('上次 ' + [string]$s.LastSync)) }
     if ($meta.Count -gt 0) { [void]$long.Add(($meta -join ' · ')) }
     $cnt = 0

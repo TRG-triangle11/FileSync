@@ -2320,12 +2320,16 @@ function Invoke-SyncTaskInternal {
     }
 
     # 通知里只讲「这次做了什么」，不讲用时（用户要的是结果，不是耗时）
-    $actionText = ('已同步 {0} 个文件' -f $realCopied)
-    $actExtra = @()
-    if ($delCount -gt 0) { $actExtra += ('删除 {0} 个' -f $delCount) }
-    if ($mvOk -gt 0)     { $actExtra += ('移动 {0} 个' -f $mvOk) }
-    if ($actExtra.Count -gt 0) { $actionText += ('（' + ($actExtra -join '，') + '）') }
-    if ($realCopied -le 0 -and $actExtra.Count -eq 0) { $actionText = '已是最新，内容没有变化' }
+    # 通知里的结果摘要：只给"这次到底同步了什么"，不加括号与用时
+    # 纯删除时说「已同步删除 N 个文件」，有复制又有删除时说「已同步 N 个文件，删除 M 个」
+    $actParts = @()
+    if ($realCopied -gt 0) { $actParts += ('已同步 {0} 个文件' -f $realCopied) }
+    if ($delCount -gt 0) {
+        if ($realCopied -le 0) { $actParts += ('已同步删除 {0} 个文件' -f $delCount) }
+        else { $actParts += ('删除 {0} 个' -f $delCount) }
+    }
+    if ($mvOk -gt 0)     { $actParts += ('移动 {0} 个' -f $mvOk) }
+    $actionText = $(if ($actParts.Count -gt 0) { $actParts -join '，' } else { '已是最新，内容没有变化' })
 
     $hintDone = '可以安全拔出硬盘'
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -2362,7 +2366,7 @@ function Invoke-SyncTaskInternal {
         # 进度条走琥珀色而不是红色：数据确实同步了绝大部分，红色会让人以为整次同步作废。
         # 标题不再带"3 个文件未能复制"——下面的问题卡片已经写了，重复两遍是噪音。
         Update-ProgressUI -Title '部分完成' -Detail $detailDone -Hint $hintPart -Percent 100 -State 'Warn'
-        Set-UIStatus -LastSync '刚刚' -Connected $true -Action ('已同步 {0} 个文件（{1} 个未成功）' -f $realCopied, [Math]::Max(1, $failFiles.Count))
+        Set-UIStatus -LastSync '刚刚' -Connected $true -Action ('已同步 {0} 个文件，{1} 个未成功' -f $realCopied, [Math]::Max(1, $failFiles.Count))
         if (-not (Test-UIAlive)) {
             [void](Show-Toast -Title ('FileSync · 部分完成：' + $detailPart) -Text (("其余已同步。" + $hintPart)) -Level 'Warn' -Seconds 8)
         }
@@ -2830,12 +2834,14 @@ function Invoke-TwoWaySync {
     if ($totalFailed -gt 0) { $detail += ("，失败 {0} 个" -f $totalFailed) }
     Write-Log ('双向同步完成：' + $detail) -Level $(if ($totalFailed -gt 0) { 'WARN' } else { 'OK' }) -LogFile $logFile
 
-    # 通知里的结果摘要（双向）：说清两边各补了多少、删了多少
-    $twAction = ('已同步 {0} 个文件' -f $totalCopied)
-    $twExtra = @()
-    if ($totalDel -gt 0) { $twExtra += ('删除 {0} 个' -f $totalDel) }
-    if ($twExtra.Count -gt 0) { $twAction += ('（' + ($twExtra -join '，') + '）') }
-    if ($totalCopied -le 0 -and $totalDel -le 0) { $twAction = '已是最新，内容没有变化' }
+    # 通知里的结果摘要（双向）：与镜像同一套说法
+    $twParts = @()
+    if ($totalCopied -gt 0) { $twParts += ('已同步 {0} 个文件' -f $totalCopied) }
+    if ($totalDel -gt 0) {
+        if ($totalCopied -le 0) { $twParts += ('已同步删除 {0} 个文件' -f $totalDel) }
+        else { $twParts += ('删除 {0} 个' -f $totalDel) }
+    }
+    $twAction = $(if ($twParts.Count -gt 0) { $twParts -join '，' } else { '已是最新，内容没有变化' })
     if ($totalFailed -gt 0) { $twAction += ('，{0} 个未成功' -f $totalFailed) }
     Set-UIStatus -Action $twAction
 
